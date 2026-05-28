@@ -60,6 +60,25 @@ fn handleHello(args_ptr: *const anyopaque) anyerror!void {
 }
 ```
 
+For applications that want a standard top-level policy, `cli.run` owns parse
+errors, help output, version/about output, handler-error formatting, and exit
+codes while leaving the lower-level `parse` and `dispatch` APIs unchanged:
+
+```zig
+const code = try cli.run(root, .{
+    .argv = argv,
+    .stdout = stdout,
+    .stderr = stderr,
+    .version = "1.0.0",
+    .about = "tool performs work",
+});
+```
+
+Runner policy is deliberately narrow: `--help`, no-handler help, `--version`,
+and `--about` write stdout and return `0`; parse errors write stderr and return
+`2`; handler errors write stderr and return `1`. Environment fallback and
+deprecation warnings are not runner-owned today.
+
 ## Flag Values
 
 String and integer flags accept both common value forms:

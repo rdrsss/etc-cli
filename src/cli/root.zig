@@ -46,6 +46,7 @@ const man_mod = @import("man.zig");
 const doc_mod = @import("doc.zig");
 const schema_mod = @import("schema.zig");
 const artifacts_mod = @import("artifacts.zig");
+const app_mod = @import("app.zig");
 const parser = @import("parser.zig");
 const err_mod = @import("error.zig");
 const platform = @import("platform/root.zig");
@@ -100,6 +101,9 @@ pub const schema = schema_mod;
 pub const artifacts = artifacts_mod;
 
 // Runtime entry points.
+pub const run = app_mod.run;
+pub const RunOptions = app_mod.Options;
+pub const ExitCodes = app_mod.ExitCodes;
 pub const parse = parser.parse;
 pub const dispatch = parser.dispatch;
 pub const formatError = err_mod.format;
@@ -125,6 +129,7 @@ test {
     _ = doc_mod;
     _ = schema_mod;
     _ = artifacts_mod;
+    _ = app_mod;
     _ = parser;
     _ = err_mod;
     _ = duration;

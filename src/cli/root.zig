@@ -45,6 +45,7 @@ const completion_mod = @import("completion.zig");
 const man_mod = @import("man.zig");
 const doc_mod = @import("doc.zig");
 const schema_mod = @import("schema.zig");
+const artifacts_mod = @import("artifacts.zig");
 const parser = @import("parser.zig");
 const err_mod = @import("error.zig");
 const platform = @import("platform/root.zig");
@@ -95,6 +96,9 @@ pub const man = man_mod;
 // Comptime machine-readable command schema generation.
 pub const schema = schema_mod;
 
+// Pure packaging/install artifact helpers.
+pub const artifacts = artifacts_mod;
+
 // Runtime entry points.
 pub const parse = parser.parse;
 pub const dispatch = parser.dispatch;
@@ -120,6 +124,7 @@ test {
     _ = man_mod;
     _ = doc_mod;
     _ = schema_mod;
+    _ = artifacts_mod;
     _ = parser;
     _ = err_mod;
     _ = duration;

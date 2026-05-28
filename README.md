@@ -116,8 +116,8 @@ explicitly.
 
 Downstream projects can write generated pages from an opt-in build step. A
 common shape is a tiny generator executable that imports the application's
-command tree, calls `cli.man.page`, and writes files under a caller-provided
-output directory:
+command tree, calls `cli.artifacts`, and writes files under caller-provided
+output directories:
 
 ```zig
 const gen_man = b.addExecutable(.{
@@ -135,22 +135,28 @@ const man_step = b.step("man", "Generate man pages");
 man_step.dependOn(&run_gen_man.step);
 ```
 
-The generator executable can then write root and subcommand pages:
+The generator executable can then write deterministic artifacts:
 
 ```zig
-try dir.writeFile(.{
-    .sub_path = "tool.1",
-    .data = comptime cli.man.page(root, &.{}, .{}),
-});
-try dir.writeFile(.{
-    .sub_path = "tool-hello.1",
-    .data = comptime cli.man.page(root, &.{ "hello" }, .{}),
-});
+const man_pages = comptime cli.artifacts.allManPages(root, .{});
+for (man_pages) |artifact| {
+    try man_dir.writeFile(.{ .sub_path = artifact.name, .data = artifact.data });
+}
+
+const bash = comptime cli.artifacts.completionScript(root, .bash);
+try completion_dir.writeFile(.{ .sub_path = bash.name, .data = bash.data });
+
+const schema = comptime cli.artifacts.schemaJson(root, .{});
+try schema_dir.writeFile(.{ .sub_path = schema.name, .data = schema.data });
 ```
 
-`etc-cli` intentionally returns plain roff text and does not install, compress,
-or write man pages during normal tests. Packaging code should decide the output
-directory, whether to gzip pages, and how to install them into `man1`.
+Artifact naming is deterministic: man pages use `tool.1` and
+`tool-subcommand.1`, completions use `tool.bash`, `_tool`, and `tool.fish`, and
+schema output uses `tool.schema.json`. `etc-cli` intentionally returns plain
+text and does not install, compress, or write artifacts during normal tests.
+Packaging code should decide output directories, gzip policy, and installation
+locations such as `share/man/man1`, bash-completion, zsh functions, fish vendor
+completions, or schema collection directories.
 
 ## Command Schema
 

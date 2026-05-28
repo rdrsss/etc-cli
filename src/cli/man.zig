@@ -18,6 +18,12 @@ pub const Options = struct {
     include_inherited_flags: bool = true,
 };
 
+pub const Page = struct {
+    name: []const u8,
+    path: []const []const u8,
+    data: []const u8,
+};
+
 pub fn page(
     comptime root: cmd_mod.Cmd,
     comptime path: []const []const u8,
@@ -33,10 +39,36 @@ pub fn page(
     return comptime renderPage(root, target, path, options);
 }
 
+pub fn allPages(comptime root: cmd_mod.Cmd, comptime options: Options) []const Page {
+    @setEvalBranchQuota(20_000_000);
+    return comptime allPagesForNode(root, root, &.{}, options);
+}
+
 pub fn pageName(comptime root: cmd_mod.Cmd, comptime path: []const []const u8) []const u8 {
     comptime {
         var out: []const u8 = root.name;
         for (path) |seg| out = out ++ "-" ++ seg;
+        return out;
+    }
+}
+
+fn allPagesForNode(
+    comptime root: cmd_mod.Cmd,
+    comptime node: cmd_mod.Cmd,
+    comptime path: []const []const u8,
+    comptime options: Options,
+) []const Page {
+    comptime {
+        var out: []const Page = &.{
+            .{
+                .name = pageName(root, path),
+                .path = path,
+                .data = renderPage(root, node, path, options),
+            },
+        };
+        for (node.cmds) |child| {
+            out = out ++ allPagesForNode(root, child, path ++ [_][]const u8{child.name}, options);
+        }
         return out;
     }
 }

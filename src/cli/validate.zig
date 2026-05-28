@@ -6,6 +6,8 @@
 //!   - duplicate sub-command names within a parent
 //!   - Default tag mismatched against the flag's Kind
 //!   - flag declared `required = true` with a `default` set (contradictory)
+//!   - invalid manual metadata such as bool value names, empty examples, and
+//!     duplicate exit-code entries
 //!
 //! Call once near the tree declaration:
 //!
@@ -60,6 +62,9 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
 
     // Per-flag invariants.
     for (node.flags) |f| {
+        if (f.kind == .bool and f.value_name != null) {
+            @compileError("cli.validate: flag '" ++ f.long ++ "' is bool and cannot define value_name");
+        }
         if (f.default) |d| {
             // Default tag must match Kind.
             const default_tag: flag.Kind = d;
@@ -69,6 +74,23 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
             // Required + default is contradictory (default makes it not-required).
             if (f.required) {
                 @compileError("cli.validate: flag '" ++ f.long ++ "' is required AND has a default; pick one");
+            }
+        }
+    }
+
+    // Manual documentation invariants.
+    for (node.doc.examples) |example| {
+        if (example.command.len == 0) {
+            @compileError("cli.validate: command '" ++ node.name ++ "' has doc example with empty command");
+        }
+    }
+    for (node.doc.exit_codes, 0..) |a, i| {
+        if (a.desc.len == 0) {
+            @compileError("cli.validate: command '" ++ node.name ++ "' has exit code " ++ std.fmt.comptimePrint("{d}", .{a.code}) ++ " with empty description");
+        }
+        for (node.doc.exit_codes[i + 1 ..]) |b| {
+            if (a.code == b.code) {
+                @compileError("cli.validate: command '" ++ node.name ++ "' has duplicate exit code " ++ std.fmt.comptimePrint("{d}", .{a.code}));
             }
         }
     }

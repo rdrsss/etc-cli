@@ -22,3 +22,7 @@ run_case integration_tests/compile_fail/duplicate_subcommand.zig "duplicate sub-
 run_case integration_tests/compile_fail/duplicate_inherited_flag.zig "duplicate flag long name"
 run_case integration_tests/compile_fail/default_kind_mismatch.zig "has default of kind"
 run_case integration_tests/compile_fail/required_with_default.zig "required AND has a default"
+run_case integration_tests/compile_fail/bool_value_name.zig "flag '--verbose' is bool and cannot define value_name"
+run_case integration_tests/compile_fail/duplicate_exit_code.zig "command 'tool' has duplicate exit code 2"
+run_case integration_tests/compile_fail/empty_example_command.zig "command 'tool' has doc example with empty command"
+run_case integration_tests/compile_fail/invalid_man_section.zig "cli.man.page: only section 1 is supported for now"

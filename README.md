@@ -72,6 +72,12 @@ String and integer flags accept both common value forms:
 Boolean flags are presence-based. `--verbose` is supported; `--verbose=true` is
 not part of the current contract.
 
+## Completion Scripts
+
+Completion scripts are generated at comptime for bash, zsh, and fish. Command
+and flag descriptions are escaped for zsh and fish completion output so common
+description text containing quotes or colons remains valid shell syntax.
+
 Run the extracted package's tests with:
 
 ```sh

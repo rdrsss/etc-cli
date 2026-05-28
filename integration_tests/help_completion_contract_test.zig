@@ -1,0 +1,89 @@
+const std = @import("std");
+const cli = @import("cli");
+
+const root = cli.Cmd{
+    .name = "tool",
+    .desc = "Short root description",
+    .flags = &.{
+        .{ .long = "--verbose", .short = 'v', .desc = "Verbose output", .kind = .bool, .default = .{ .bool = false } },
+    },
+    .cmds = &.{
+        .{
+            .name = "group",
+            .desc = "Parent listing description",
+            .long_desc = "Parent long description\nwith multiple lines.",
+            .flags = &.{
+                .{ .long = "--mode", .desc = "Mode selector", .kind = .string },
+            },
+            .cmds = &.{
+                .{
+                    .name = "run",
+                    .desc = "Run leaf",
+                    .long_desc = "Leaf long description for the command page.",
+                    .flags = &.{
+                        .{ .long = "--name", .desc = "Name value", .kind = .string, .required = true },
+                    },
+                },
+            },
+        },
+        .{
+            .name = "quote",
+            .desc = "Say 'hi': then \"bye\"",
+            .flags = &.{
+                .{ .long = "--path", .desc = "Path 'quoted': and \"double\"", .kind = .string },
+            },
+        },
+    },
+};
+
+comptime {
+    cli.validate(root);
+}
+
+test "parent and leaf help render the right descriptions and command structure" {
+    const root_help = comptime cli.helpText(root, &.{});
+    try std.testing.expect(std.mem.indexOf(u8, root_help, "group") != null);
+    try std.testing.expect(std.mem.indexOf(u8, root_help, "Parent listing description") != null);
+
+    const parent_help = comptime cli.helpText(root, &.{"group"});
+    try std.testing.expect(std.mem.indexOf(u8, parent_help, "Parent long description") != null);
+    try std.testing.expect(std.mem.indexOf(u8, parent_help, "run") != null);
+    try std.testing.expect(std.mem.indexOf(u8, parent_help, "--mode") != null);
+
+    const leaf_help = comptime cli.helpText(root, &.{ "group", "run" });
+    try std.testing.expect(std.mem.indexOf(u8, leaf_help, "Leaf long description") != null);
+    try std.testing.expect(std.mem.indexOf(u8, leaf_help, "--name") != null);
+}
+
+test "bash and zsh completions include inherited and local flags" {
+    const bash = comptime cli.completion.script(root, .bash);
+    try std.testing.expect(std.mem.indexOf(u8, bash, "\"group run\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash, "--verbose") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash, "--mode") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash, "--name") != null);
+
+    const zsh = comptime cli.completion.script(root, .zsh);
+    try std.testing.expect(std.mem.indexOf(u8, zsh, "\"--verbose:Verbose output\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh, "\"--mode:Mode selector\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh, "\"--name:Name value\"") != null);
+}
+
+test "fish completion documents owned flags at each path" {
+    const fish = comptime cli.completion.script(root, .fish);
+    try std.testing.expect(std.mem.indexOf(u8, fish, "__fish_tool_path \"\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish, "__fish_tool_path \"group\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish, "__fish_tool_path \"group run\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish, "-l 'verbose' -s v") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish, "-l 'mode'") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish, "-l 'name'") != null);
+}
+
+test "completion escapes shell-sensitive descriptions" {
+    const zsh = comptime cli.completion.script(root, .zsh);
+    try std.testing.expect(std.mem.indexOf(u8, zsh, "\"quote:Say 'hi'\\: then \\\"bye\\\"\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh, "\"--path:Path 'quoted'\\: and \\\"double\\\"\"") != null);
+
+    const fish = comptime cli.completion.script(root, .fish);
+    try std.testing.expect(std.mem.indexOf(u8, fish, "-a 'quote' -d 'Say \\'hi\\': then \"bye\"'") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish, "-l 'path' -d 'Path \\'quoted\\': and \"double\"'") != null);
+}

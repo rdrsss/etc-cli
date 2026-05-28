@@ -288,7 +288,7 @@ fn zshCmdPairs(comptime cmds: []const cmd_mod.Cmd) []const u8 {
         var out: []const u8 = "";
         for (cmds, 0..) |c, i| {
             if (i > 0) out = out ++ " ";
-            out = out ++ "\"" ++ c.name ++ ":" ++ c.desc ++ "\"";
+            out = out ++ "\"" ++ zshEscape(c.name) ++ ":" ++ zshEscapeDesc(c.desc) ++ "\"";
         }
         return out;
     }
@@ -301,9 +301,9 @@ fn zshFlagPairs(comptime flags: []const flag_mod.Flag) []const u8 {
         for (flags) |f| {
             if (!first) out = out ++ " ";
             first = false;
-            out = out ++ "\"" ++ f.long ++ ":" ++ f.desc ++ "\"";
+            out = out ++ "\"" ++ zshEscape(f.long) ++ ":" ++ zshEscapeDesc(f.desc) ++ "\"";
             if (f.short) |s| {
-                out = out ++ " \"-" ++ &[_]u8{s} ++ ":" ++ f.desc ++ "\"";
+                out = out ++ " \"-" ++ &[_]u8{s} ++ ":" ++ zshEscapeDesc(f.desc) ++ "\"";
             }
         }
         if (!first) out = out ++ " ";
@@ -330,8 +330,8 @@ fn fishCmdLine(
     comptime {
         var out: []const u8 = "complete -c " ++ bin ++
             " -n '__fish_" ++ bin ++ "_path \"" ++ path ++ "\"'" ++
-            " -f -a '" ++ c.name ++ "'";
-        if (c.desc.len > 0) out = out ++ " -d '" ++ c.desc ++ "'";
+            " -f -a '" ++ fishSingleQuote(c.name) ++ "'";
+        if (c.desc.len > 0) out = out ++ " -d '" ++ fishSingleQuote(c.desc) ++ "'";
         out = out ++ "\n";
         return out;
     }
@@ -352,10 +352,53 @@ fn fishFlagLine(
             f.long;
         var out: []const u8 = "complete -c " ++ bin ++
             " -n '__fish_" ++ bin ++ "_path \"" ++ path ++ "\"'" ++
-            " -l '" ++ long_bare ++ "'";
+            " -l '" ++ fishSingleQuote(long_bare) ++ "'";
         if (f.short) |s| out = out ++ " -s " ++ &[_]u8{s};
-        if (f.desc.len > 0) out = out ++ " -d '" ++ f.desc ++ "'";
+        if (f.desc.len > 0) out = out ++ " -d '" ++ fishSingleQuote(f.desc) ++ "'";
         out = out ++ "\n";
+        return out;
+    }
+}
+
+fn zshEscape(comptime s: []const u8) []const u8 {
+    comptime {
+        var out: []const u8 = "";
+        for (s) |c| {
+            out = switch (c) {
+                '\\' => out ++ "\\\\",
+                '"' => out ++ "\\\"",
+                else => out ++ &[_]u8{c},
+            };
+        }
+        return out;
+    }
+}
+
+fn zshEscapeDesc(comptime s: []const u8) []const u8 {
+    comptime {
+        var out: []const u8 = "";
+        for (s) |c| {
+            out = switch (c) {
+                '\\' => out ++ "\\\\",
+                '"' => out ++ "\\\"",
+                ':' => out ++ "\\:",
+                else => out ++ &[_]u8{c},
+            };
+        }
+        return out;
+    }
+}
+
+fn fishSingleQuote(comptime s: []const u8) []const u8 {
+    comptime {
+        var out: []const u8 = "";
+        for (s) |c| {
+            out = switch (c) {
+                '\\' => out ++ "\\\\",
+                '\'' => out ++ "\\'",
+                else => out ++ &[_]u8{c},
+            };
+        }
         return out;
     }
 }

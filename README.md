@@ -280,3 +280,7 @@ completion, and schema output. If `mandoc` is installed locally, the test step
 also runs `mandoc -Tlint` over committed man-page snapshots; otherwise that lint
 gate prints a skip message and succeeds. Completion snapshots are linted with
 `bash -n`, `zsh -n`, and `fish -n` when those shells are installed.
+
+See `examples/basic.zig` for a complete command tree and app-runner setup. CI
+matrix guidance lives in `docs/ci.md`; release and API-versioning policy lives
+in `docs/release.md`.

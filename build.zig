@@ -16,6 +16,18 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const basic_example = b.addExecutable(.{
+        .name = "etc-cli-basic-example",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/basic.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "cli", .module = cli_mod },
+            },
+        }),
+    });
+
     const tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/cli/root.zig"),
@@ -224,6 +236,7 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run unit and integration tests");
     test_step.dependOn(&run_tests.step);
+    test_step.dependOn(&basic_example.step);
     test_step.dependOn(&run_package_import_cli_tests.step);
     test_step.dependOn(&run_package_import_etc_cli_tests.step);
     test_step.dependOn(&run_parser_contract_tests.step);

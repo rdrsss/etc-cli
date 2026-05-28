@@ -9,6 +9,7 @@
         "build.zig.zon",
         "integration_tests",
         "README.md",
+        "scripts",
         "src",
     },
 }

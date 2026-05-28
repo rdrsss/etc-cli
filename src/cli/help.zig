@@ -18,6 +18,9 @@ const flag_mod = @import("flag.zig");
 pub const Options = struct {
     include_hidden: bool = false,
     include_deprecated: bool = true,
+    /// Optional target width. Widths <= 48 switch tables to a compact
+    /// two-line form that keeps descriptions out of narrow columns.
+    width: ?usize = null,
 };
 
 pub fn helpText(comptime root: cmd_mod.Cmd, comptime path: []const []const u8) []const u8 {
@@ -34,6 +37,15 @@ pub fn helpTextWithOptions(
         "helpText: no command at path",
     );
     return comptime renderCmd(target, path, options);
+}
+
+pub fn writeText(
+    comptime root: cmd_mod.Cmd,
+    comptime path: []const []const u8,
+    comptime options: Options,
+    writer: *std.Io.Writer,
+) std.Io.Writer.Error!void {
+    try writer.writeAll(comptime helpTextWithOptions(root, path, options));
 }
 
 fn renderCmd(comptime node: cmd_mod.Cmd, comptime path: []const []const u8, comptime options: Options) []const u8 {
@@ -72,6 +84,13 @@ fn renderCmd(comptime node: cmd_mod.Cmd, comptime path: []const []const u8, comp
             out = out ++ "\nCOMMANDS:\n";
             for (node.cmds) |c| {
                 if (!visibleCmd(c, options)) continue;
+                if (compact(options)) {
+                    out = out ++ "  " ++ c.name;
+                    if (c.deprecated) |d| out = out ++ deprecationSuffix(d);
+                    out = out ++ "\n";
+                    if (c.desc.len > 0) out = out ++ "      " ++ c.desc ++ "\n";
+                    continue;
+                }
                 out = out ++ "  " ++ c.name ++ padTo(c.name, 16);
                 if (c.desc.len > 0) out = out ++ c.desc;
                 if (c.deprecated) |d| out = out ++ deprecationSuffix(d);
@@ -84,7 +103,7 @@ fn renderCmd(comptime node: cmd_mod.Cmd, comptime path: []const []const u8, comp
             out = out ++ "\nFLAGS:\n";
             for (node.flags) |f| {
                 if (!visibleFlag(f, options)) continue;
-                out = out ++ "  " ++ renderFlagLine(f) ++ "\n";
+                out = out ++ "  " ++ renderFlagLine(f, options) ++ "\n";
             }
         }
 
@@ -92,7 +111,7 @@ fn renderCmd(comptime node: cmd_mod.Cmd, comptime path: []const []const u8, comp
         if (node.positionals.len > 0) {
             out = out ++ "\nPOSITIONAL ARGUMENTS:\n";
             for (node.positionals) |p| {
-                out = out ++ "  <" ++ p.name ++ ">" ++ padTo(p.name, 14) ++ "(" ++ @tagName(p.kind) ++ ")";
+                out = out ++ "  <" ++ p.name ++ ">" ++ padTo(p.name, if (compact(options)) 8 else 14) ++ "(" ++ @tagName(p.kind) ++ ")";
                 if (!p.required) out = out ++ " optional";
                 if (p.desc.len > 0) out = out ++ " — " ++ p.desc;
                 out = out ++ "\n";
@@ -112,17 +131,27 @@ fn renderPath(comptime path: []const []const u8, comptime leaf_name: []const u8)
     }
 }
 
-fn renderFlagLine(comptime f: flag_mod.Flag) []const u8 {
+fn renderFlagLine(comptime f: flag_mod.Flag, comptime options: Options) []const u8 {
     comptime {
         var out: []const u8 = f.long;
         if (f.short) |s| out = out ++ ", -" ++ &[_]u8{s};
-        out = out ++ padTo(out, 22) ++ "(" ++ @tagName(f.kind) ++ ")";
+        out = out ++ padTo(out, if (compact(options)) 16 else 22) ++ "(" ++ @tagName(f.kind) ++ ")";
         if (f.required) out = out ++ " required";
         if (f.default) |d| out = out ++ " default=" ++ renderDefault(d);
-        if (f.desc.len > 0) out = out ++ " — " ++ f.desc;
+        if (f.desc.len > 0) {
+            if (compact(options)) {
+                out = out ++ "\n      " ++ f.desc;
+            } else {
+                out = out ++ " — " ++ f.desc;
+            }
+        }
         if (f.deprecated) |d| out = out ++ deprecationSuffix(d);
         return out;
     }
+}
+
+fn compact(comptime options: Options) bool {
+    return if (options.width) |width| width <= 48 else false;
 }
 
 fn visibleCmd(comptime c: cmd_mod.Cmd, comptime options: Options) bool {

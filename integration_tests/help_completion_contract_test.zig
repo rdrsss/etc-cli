@@ -55,6 +55,17 @@ test "parent and leaf help render the right descriptions and command structure" 
     try std.testing.expect(std.mem.indexOf(u8, leaf_help, "--name") != null);
 }
 
+test "help supports compact width and writer output" {
+    const compact = comptime cli.helpTextWithOptions(root, &.{}, .{ .width = 40 });
+    try std.testing.expect(std.mem.indexOf(u8, compact, "  group\n      Parent listing description") != null);
+    try std.testing.expect(std.mem.indexOf(u8, compact, "      Verbose output") != null);
+
+    var buf: [2048]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buf);
+    try cli.help.writeText(root, &.{}, .{}, &writer);
+    try std.testing.expectEqualStrings(comptime cli.helpText(root, &.{}), writer.buffered());
+}
+
 test "bash and zsh completions include inherited and local flags" {
     const bash = comptime cli.completion.script(root, .bash);
     try std.testing.expect(std.mem.indexOf(u8, bash, "\"group run\"") != null);

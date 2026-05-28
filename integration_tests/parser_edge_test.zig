@@ -6,6 +6,9 @@ const root = cli.Cmd{
     .cmds = &.{
         .{
             .name = "take",
+            .flags = &.{
+                .{ .long = "--count", .short = 'c', .kind = .int },
+            },
             .positionals = &.{
                 .{ .name = "value", .kind = .string, .required = true },
             },
@@ -56,9 +59,10 @@ test "lone dash is parsed as a positional" {
 test "unknown flags require explicit opt-in" {
     {
         var detail: cli.Detail = undefined;
-        const result = cli.parse(root, &.{ "tool", "take", "--unknown", "value" }, &detail);
+        const result = cli.parse(root, &.{ "tool", "take", "--coun", "value" }, &detail);
         try std.testing.expectError(cli.Parse.UnknownFlag, result);
-        try std.testing.expectEqualStrings("--unknown", detail.arg.?);
+        try std.testing.expectEqualStrings("--coun", detail.arg.?);
+        try std.testing.expectEqualStrings("--count", detail.suggestion.?);
     }
 
     {
@@ -66,6 +70,18 @@ test "unknown flags require explicit opt-in" {
         const result = try cli.parse(root, &.{ "tool", "legacy", "--unknown", "ignored", "value" }, &detail);
         try std.testing.expectEqualStrings("value", result.match.legacy.name);
     }
+}
+
+test "unknown subcommands suggest nearby command names" {
+    var detail: cli.Detail = undefined;
+    const result = cli.parse(root, &.{ "tool", "legaacy" }, &detail);
+    try std.testing.expectError(cli.Parse.UnknownSubcommand, result);
+    try std.testing.expectEqualStrings("legaacy", detail.arg.?);
+    try std.testing.expectEqualStrings("legacy", detail.suggestion.?);
+
+    const structured = cli.structuredError(detail);
+    try std.testing.expectEqualStrings("unknown_subcommand", structured.kind_name);
+    try std.testing.expectEqualStrings("legacy", structured.suggestion.?);
 }
 
 test "unknown flag passthrough does not swallow a following known flag-shaped token" {

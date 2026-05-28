@@ -112,6 +112,13 @@ test "schema output is deterministic" {
     try std.testing.expectEqualStrings(a, b);
 }
 
+test "schema can be written to a caller-owned writer" {
+    var buf: [8192]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buf);
+    try cli.schema.writeJson(root, .{}, &writer);
+    try std.testing.expectEqualStrings(comptime cli.schema.json(root, .{}), writer.buffered());
+}
+
 fn expectContains(haystack: []const u8, needle: []const u8) !void {
     try std.testing.expect(std.mem.indexOf(u8, haystack, needle) != null);
 }

@@ -329,10 +329,12 @@ fn parseImpl(
         return .{ .help = path_buf[0..path_len] };
     }
 
+    const unknown = if (tail_len > 0) tail_buf[0] else if (i < argv.len) argv[i] else null;
     err_out.* = .{
         .kind = err_mod.Parse.UnknownSubcommand,
-        .arg = if (i < argv.len) argv[i] else null,
+        .arg = unknown,
         .cmd_path = current.name,
+        .suggestion = if (unknown) |tok| suggestCommandForPath(root, path_buf[0..path_len], tok) else null,
     };
     return err_mod.Parse.UnknownSubcommand;
 }
@@ -501,7 +503,7 @@ fn parseLeaf(
                     }
                     continue;
                 }
-                err_out.* = .{ .kind = err_mod.Parse.UnknownFlag, .arg = tok };
+                err_out.* = .{ .kind = err_mod.Parse.UnknownFlag, .arg = tok, .suggestion = suggestFlag(all_flags, tok) };
                 return err_mod.Parse.UnknownFlag;
             }
         } else {
@@ -707,6 +709,77 @@ fn flagNegationMatches(comptime f: Flag, tok: []const u8) bool {
         }
     }
     return false;
+}
+
+fn suggestCommandForPath(comptime root: Cmd, path: []const []const u8, tok: []const u8) ?[]const u8 {
+    if (path.len == 0) return suggestCommand(root.cmds, tok);
+    const nodes = comptime cmd_mod.allNodes(root);
+    inline for (nodes) |node| {
+        if (pathsEqual(node.path, path)) return suggestCommand(node.cmd.cmds, tok);
+    }
+    return null;
+}
+
+fn suggestCommand(comptime cmds: []const Cmd, tok: []const u8) ?[]const u8 {
+    var best: ?[]const u8 = null;
+    var best_score: usize = std.math.maxInt(usize);
+    inline for (cmds) |c| {
+        bestCandidate(tok, c.name, &best, &best_score);
+        inline for (c.aliases) |alias| bestCandidate(tok, alias, &best, &best_score);
+    }
+    return if (best_score <= 2) best else null;
+}
+
+fn suggestFlag(comptime flags: []const Flag, tok: []const u8) ?[]const u8 {
+    const name = flagSuggestionToken(tok);
+    var best: ?[]const u8 = null;
+    var best_score: usize = std.math.maxInt(usize);
+    inline for (flags) |f| {
+        bestCandidate(name, f.long, &best, &best_score);
+        inline for (f.aliases) |alias| bestCandidate(name, alias, &best, &best_score);
+        if (f.short) |s| {
+            const short = "-" ++ &[_]u8{s};
+            bestCandidate(name, short, &best, &best_score);
+        }
+    }
+    return if (best_score <= 2) best else null;
+}
+
+fn flagSuggestionToken(tok: []const u8) []const u8 {
+    if (std.mem.indexOfScalar(u8, tok, '=')) |idx| return tok[0..idx];
+    return tok;
+}
+
+fn bestCandidate(tok: []const u8, candidate: []const u8, best: *?[]const u8, best_score: *usize) void {
+    const score = editDistanceAtMost(tok, candidate, 3) orelse return;
+    if (score < best_score.*) {
+        best.* = candidate;
+        best_score.* = score;
+    }
+}
+
+fn editDistanceAtMost(a: []const u8, b: []const u8, max: usize) ?usize {
+    if (a.len > b.len + max or b.len > a.len + max) return null;
+    var previous: [128]usize = undefined;
+    var current: [128]usize = undefined;
+    if (b.len + 1 > previous.len) return null;
+
+    for (0..b.len + 1) |j| previous[j] = j;
+    for (a, 0..) |ac, i| {
+        current[0] = i + 1;
+        var row_min = current[0];
+        for (b, 0..) |bc, j| {
+            const cost: usize = if (ac == bc) 0 else 1;
+            const deletion = previous[j + 1] + 1;
+            const insertion = current[j] + 1;
+            const substitution = previous[j] + cost;
+            current[j + 1] = @min(@min(deletion, insertion), substitution);
+            row_min = @min(row_min, current[j + 1]);
+        }
+        if (row_min > max) return null;
+        for (0..b.len + 1) |j| previous[j] = current[j];
+    }
+    return if (previous[b.len] <= max) previous[b.len] else null;
 }
 
 fn parseBoolValue(raw: []const u8) ?bool {

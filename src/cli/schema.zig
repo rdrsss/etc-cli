@@ -22,6 +22,14 @@ pub fn json(comptime root: cmd_mod.Cmd, comptime options: Options) []const u8 {
     return comptime renderRoot(root, options);
 }
 
+pub fn writeJson(
+    comptime root: cmd_mod.Cmd,
+    comptime options: Options,
+    writer: *std.Io.Writer,
+) std.Io.Writer.Error!void {
+    try writer.writeAll(comptime json(root, options));
+}
+
 fn renderRoot(comptime root: cmd_mod.Cmd, comptime options: Options) []const u8 {
     comptime {
         var out: []const u8 = "{";

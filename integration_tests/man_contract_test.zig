@@ -135,6 +135,13 @@ test "options can set title and manual metadata" {
     try expectContains(text, ".TH \"TOOL-RUN\" \"1\" \"\" \"etc-cli 1.0\" \"User Commands\"");
 }
 
+test "man page can be written to a caller-owned writer" {
+    var buf: [4096]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buf);
+    try cli.man.writePage(root, &.{}, .{}, &writer);
+    try std.testing.expectEqualStrings(comptime cli.man.page(root, &.{}, .{}), writer.buffered());
+}
+
 test "inherited flags can be omitted" {
     const text = comptime cli.man.page(root, &.{ "group", "run" }, .{
         .include_inherited_flags = false,

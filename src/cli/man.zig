@@ -41,6 +41,15 @@ pub fn page(
     return comptime renderPage(root, target, path, options);
 }
 
+pub fn writePage(
+    comptime root: cmd_mod.Cmd,
+    comptime path: []const []const u8,
+    comptime options: Options,
+    writer: *std.Io.Writer,
+) std.Io.Writer.Error!void {
+    try writer.writeAll(comptime page(root, path, options));
+}
+
 pub fn allPages(comptime root: cmd_mod.Cmd, comptime options: Options) []const Page {
     @setEvalBranchQuota(20_000_000);
     return comptime allPagesForNode(root, root, &.{}, options);

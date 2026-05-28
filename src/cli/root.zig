@@ -70,6 +70,7 @@ pub const Doc = doc_mod.Doc;
 pub const Example = doc_mod.Example;
 pub const ExitCode = doc_mod.ExitCode;
 pub const Detail = err_mod.Detail;
+pub const StructuredError = err_mod.Structured;
 pub const Parse = err_mod.Parse;
 
 // Comptime helpers (tree introspection + typed args).
@@ -89,6 +90,7 @@ pub const castArgs = cmd.castArgs;
 pub const validate = validate_mod.validate;
 
 // Comptime help-text generation.
+pub const help = help_mod;
 pub const helpText = help_mod.helpText;
 pub const helpTextWithOptions = help_mod.helpTextWithOptions;
 
@@ -112,6 +114,8 @@ pub const ExitCodes = app_mod.ExitCodes;
 pub const parse = parser.parse;
 pub const dispatch = parser.dispatch;
 pub const formatError = err_mod.format;
+pub const structuredError = err_mod.structured;
+pub const errorKindName = err_mod.kindName;
 
 // Platform (OS-isolated argv acquisition).
 pub const argv = platform.argv;

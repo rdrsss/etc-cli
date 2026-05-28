@@ -77,7 +77,9 @@ not part of the current contract.
 `Flag.env` is currently reserved metadata. The parser does not read environment
 variables, and an `env` setting does not satisfy a required flag. Consumers
 should pass environment-derived defaults explicitly until env fallback behavior
-is added as a deliberate feature.
+is added as a deliberate feature. Precedence is therefore `argv`, then declared
+defaults, then required-flag errors; `env` is not in the parse-time precedence
+chain.
 
 ## Completion Scripts
 

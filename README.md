@@ -72,14 +72,38 @@ String and integer flags accept both common value forms:
 Boolean flags are presence-based. `--verbose` is supported; `--verbose=true` is
 not part of the current contract.
 
+## Environment Metadata
+
+`Flag.env` is currently reserved metadata. The parser does not read environment
+variables, and an `env` setting does not satisfy a required flag. Consumers
+should pass environment-derived defaults explicitly until env fallback behavior
+is added as a deliberate feature.
+
 ## Completion Scripts
 
 Completion scripts are generated at comptime for bash, zsh, and fish. Command
 and flag descriptions are escaped for zsh and fish completion output so common
 description text containing quotes or colons remains valid shell syntax.
 
+## Validation
+
+Call `comptime cli.validate(root);` near each command tree declaration. The
+validator rejects duplicate subcommands, duplicate inherited flags, mismatched
+default kinds, and required flags that also define defaults.
+
+Negative validation behavior is covered by compile-fail fixtures under
+`integration_tests/compile_fail/`. The default `zig build test` step runs those
+fixtures through `scripts/compile_fail.sh` and asserts the expected compile-time
+diagnostics.
+
+## Tests
+
 Run the extracted package's tests with:
 
 ```sh
 zig build test
 ```
+
+That command runs source-local unit tests, downstream-style import tests for both
+`cli` and `etc_cli`, parser contract tests, dispatch tests, completion/help
+tests, and compile-fail validation fixtures.

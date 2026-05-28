@@ -40,12 +40,15 @@ comptime {
 }
 
 pub fn main(init: std.process.Init) !void {
+    const allocator = init.arena.allocator();
+    const argv = try cli.argv(allocator, init.minimal.args);
+    defer cli.freeArgv(allocator, argv);
+
     var stdout_buf: [4096]u8 = undefined;
     var stderr_buf: [4096]u8 = undefined;
     var stdout_writer: std.Io.File.Writer = .init(.stdout(), init.io, &stdout_buf);
     var stderr_writer: std.Io.File.Writer = .init(.stderr(), init.io, &stderr_buf);
 
-    const argv = &.{ "example", "run", "--name", "demo", "alpha" };
     const code = try cli.run(root, .{
         .argv = argv,
         .stdout = &stdout_writer.interface,

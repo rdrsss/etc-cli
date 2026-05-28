@@ -1,19 +1,42 @@
 //! OS-isolated platform layer for the cli library.
 //!
-//! Currently only houses argv acquisition. The Zig stdlib's
-//! `std.process.argsAlloc` already handles the POSIX (zero-alloc-ish)
-//! vs Windows (UTF-16 → UTF-8 with allocation) split, so the platform
-//! files here are thin wrappers. The directory exists so future
-//! OS-specific helpers (terminal width detection, config-dir resolution,
-//! signal handling, etc.) have a clear home without polluting the
-//! parser surface.
+//! Currently only houses argv acquisition. Zig 0.16 exposes process
+//! arguments through `std.process.Init.Minimal.args`; this wrapper turns
+//! that source into a parser-friendly, allocator-owned `[]const []const u8`
+//! on every platform.
 
-const builtin = @import("builtin");
+const std = @import("std");
 
-const impl = switch (builtin.os.tag) {
-    .windows => @import("windows.zig"),
-    else => @import("posix.zig"),
-};
+pub fn argv(
+    allocator: std.mem.Allocator,
+    args_source: std.process.Args,
+) ![]const []const u8 {
+    var count_it = try std.process.Args.Iterator.initAllocator(args_source, allocator);
+    defer count_it.deinit();
 
-pub const argv = impl.argv;
-pub const freeArgv = impl.freeArgv;
+    var count: usize = 0;
+    while (count_it.next()) |_| count += 1;
+
+    const out = try allocator.alloc([]const u8, count);
+    errdefer allocator.free(out);
+
+    var fill_it = try std.process.Args.Iterator.initAllocator(args_source, allocator);
+    defer fill_it.deinit();
+
+    var filled: usize = 0;
+    errdefer {
+        for (out[0..filled]) |arg| allocator.free(arg);
+    }
+
+    while (fill_it.next()) |arg| {
+        out[filled] = try allocator.dupe(u8, arg);
+        filled += 1;
+    }
+
+    return out;
+}
+
+pub fn freeArgv(allocator: std.mem.Allocator, args: []const []const u8) void {
+    for (args) |arg| allocator.free(arg);
+    allocator.free(args);
+}

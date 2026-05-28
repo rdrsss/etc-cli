@@ -18,7 +18,7 @@
 //!
 //!   pub fn main(init: std.process.Init) !void {
 //!       const allocator = init.arena.allocator();
-//!       const argv = try cli.argv(allocator);
+//!       const argv = try cli.argv(allocator, init.minimal.args);
 //!       defer cli.freeArgv(allocator, argv);
 //!
 //!       // Callback mode: dispatch invokes the matched leaf's handler.

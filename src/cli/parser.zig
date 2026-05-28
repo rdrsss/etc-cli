@@ -436,7 +436,8 @@ fn parseLeaf(
             // matched-flag branch is dead — but Zig's sema still tries to
             // type-check `all_flags[idx]`, which fails on an empty slice.
             // Hoisting the check elides the branch at comptime.
-            const matched_idx = if (all_flags.len == 0) null else matchFlag(all_flags, tok);
+            const matched = if (all_flags.len == 0) null else matchFlag(all_flags, tok);
+            const matched_idx = if (matched) |m| m.idx else null;
             if (all_flags.len > 0 and matched_idx != null) {
                 const idx = matched_idx.?;
                 const f = all_flags[idx];
@@ -451,13 +452,18 @@ fn parseLeaf(
                     continue;
                 }
 
-                // Non-bool flag needs a value.
-                i += 1;
-                if (i >= tail.len) {
-                    err_out.* = .{ .kind = err_mod.Parse.MissingValue, .flag = f.long };
-                    return err_mod.Parse.MissingValue;
-                }
-                const raw = tail[i];
+                // Non-bool flags accept either `--flag value` or
+                // long-form `--flag=value`.
+                const raw = if (matched.?.inline_value) |value|
+                    value
+                else blk: {
+                    i += 1;
+                    if (i >= tail.len) {
+                        err_out.* = .{ .kind = err_mod.Parse.MissingValue, .flag = f.long };
+                        return err_mod.Parse.MissingValue;
+                    }
+                    break :blk tail[i];
+                };
                 switch (f.kind) {
                     .bool => unreachable,
                     .string => setFlagValue(Args, &args, all_flags, idx, .{ .string = raw }),
@@ -550,11 +556,21 @@ fn parseLeaf(
     return args;
 }
 
-fn matchFlag(comptime all_flags: []const Flag, tok: []const u8) ?usize {
-    // Long form: exact match against f.long.
+const MatchedFlag = struct {
+    idx: usize,
+    inline_value: ?[]const u8 = null,
+};
+
+fn matchFlag(comptime all_flags: []const Flag, tok: []const u8) ?MatchedFlag {
+    // Long form: exact match against f.long, or `--long=value` for non-bool
+    // flags. Bool equals syntax remains unsupported and falls through to
+    // UnknownFlag.
     if (tok.len >= 2 and tok[0] == '-' and tok[1] == '-') {
         for (all_flags, 0..) |f, i| {
-            if (std.mem.eql(u8, f.long, tok)) return i;
+            if (std.mem.eql(u8, f.long, tok)) return .{ .idx = i };
+            if (f.kind != .bool and std.mem.startsWith(u8, tok, f.long) and tok.len > f.long.len and tok[f.long.len] == '=') {
+                return .{ .idx = i, .inline_value = tok[f.long.len + 1 ..] };
+            }
         }
         return null;
     }
@@ -562,7 +578,7 @@ fn matchFlag(comptime all_flags: []const Flag, tok: []const u8) ?usize {
     if (tok.len == 2 and tok[0] == '-') {
         const c = tok[1];
         for (all_flags, 0..) |f, i| {
-            if (f.short) |s| if (s == c) return i;
+            if (f.short) |s| if (s == c) return .{ .idx = i };
         }
         return null;
     }

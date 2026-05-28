@@ -112,11 +112,37 @@ test "unknown subcommand and bare parent command have stable outcomes" {
     }
 }
 
-test "flag equals syntax is intentionally unsupported" {
+test "flag equals syntax is supported for string and int flags" {
     var detail: cli.Detail = undefined;
-    const result = cli.parse(root, &.{ "tool", "act", "--name=n", "1" }, &detail);
+    const result = try cli.parse(root, &.{ "tool", "act", "--name=n", "--count=7", "1" }, &detail);
+    const args = result.match.act;
+    try std.testing.expectEqualStrings("n", args.name);
+    try std.testing.expectEqual(@as(i64, 7), args.count);
+    try std.testing.expectEqual(@as(i64, 1), args.amount);
+}
+
+test "flag equals syntax shares duplicate and invalid-value handling" {
+    {
+        var detail: cli.Detail = undefined;
+        const result = cli.parse(root, &.{ "tool", "act", "--name=n", "--name", "again", "1" }, &detail);
+        try std.testing.expectError(cli.Parse.DuplicateFlag, result);
+        try std.testing.expectEqualStrings("--name", detail.flag.?);
+    }
+
+    {
+        var detail: cli.Detail = undefined;
+        const result = cli.parse(root, &.{ "tool", "act", "--name=n", "--count=many", "1" }, &detail);
+        try std.testing.expectError(cli.Parse.InvalidValue, result);
+        try std.testing.expectEqualStrings("--count", detail.flag.?);
+        try std.testing.expectEqualStrings("many", detail.arg.?);
+    }
+}
+
+test "flag equals syntax remains unsupported for bool flags" {
+    var detail: cli.Detail = undefined;
+    const result = cli.parse(root, &.{ "tool", "act", "--name=n", "--force=true", "1" }, &detail);
     try std.testing.expectError(cli.Parse.UnknownFlag, result);
-    try std.testing.expectEqualStrings("--name=n", detail.arg.?);
+    try std.testing.expectEqualStrings("--force=true", detail.arg.?);
 }
 
 test "Flag.env metadata is reserved and does not satisfy required flags" {

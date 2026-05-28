@@ -60,6 +60,18 @@ fn handleHello(args_ptr: *const anyopaque) anyerror!void {
 }
 ```
 
+## Flag Values
+
+String and integer flags accept both common value forms:
+
+```sh
+--name value
+--name=value
+```
+
+Boolean flags are presence-based. `--verbose` is supported; `--verbose=true` is
+not part of the current contract.
+
 Run the extracted package's tests with:
 
 ```sh

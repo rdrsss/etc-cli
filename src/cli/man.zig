@@ -168,6 +168,34 @@ fn renderPage(
             for (node.doc.notes) |note| out = out ++ ".PP\n" ++ roff(note) ++ "\n";
         }
 
+        if (node.doc.files.len > 0) {
+            out = out ++ ".SH FILES\n";
+            for (node.doc.files) |file| out = out ++ ".TP\n.I " ++ roff(file) ++ "\n";
+        }
+
+        if (node.doc.homepage.len > 0 or node.doc.source_url.len > 0 or node.doc.version.len > 0) {
+            out = out ++ ".SH PROJECT\n";
+            if (node.doc.homepage.len > 0) out = out ++ ".TP\n.B Homepage\n" ++ roff(node.doc.homepage) ++ "\n";
+            if (node.doc.source_url.len > 0) out = out ++ ".TP\n.B Source\n" ++ roff(node.doc.source_url) ++ "\n";
+            if (node.doc.version.len > 0) out = out ++ ".TP\n.B Version\n" ++ roff(node.doc.version) ++ "\n";
+        }
+
+        if (node.doc.bugs.len > 0) {
+            out = out ++ ".SH BUGS\n";
+            for (node.doc.bugs) |bug| out = out ++ ".PP\n" ++ roff(bug) ++ "\n";
+        }
+
+        if (node.doc.authors.len > 0) {
+            out = out ++ ".SH AUTHORS\n";
+            for (node.doc.authors) |author| out = out ++ ".PP\n" ++ roff(author) ++ "\n";
+        }
+
+        if (node.doc.license.len > 0 or node.doc.copyright.len > 0) {
+            out = out ++ ".SH COPYRIGHT\n";
+            if (node.doc.copyright.len > 0) out = out ++ ".PP\n" ++ roff(node.doc.copyright) ++ "\n";
+            if (node.doc.license.len > 0) out = out ++ ".PP\nLicense: " ++ roff(node.doc.license) ++ "\n";
+        }
+
         if (node.doc.see_also.len > 0) {
             out = out ++ ".SH SEE ALSO\n";
             out = out ++ renderSeeAlso(node.doc.see_also) ++ "\n";

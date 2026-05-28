@@ -1,0 +1,12 @@
+tool
+
+  Snapshot tool
+
+USAGE:
+  tool [flags] <command>
+
+COMMANDS:
+  run             Run target
+
+FLAGS:
+  --verbose, -v         (bool) default=false — Verbose output

@@ -36,6 +36,14 @@ const root = cli.Cmd{
                         },
                         .notes = &.{"Use schema output for agents."},
                         .see_also = &.{ "tool(1)", "tool-group-run(1)" },
+                        .files = &.{ "~/.config/tool/config.toml" },
+                        .bugs = &.{ "Report issues at https://example.test/tool/issues." },
+                        .authors = &.{ "Example Maintainers" },
+                        .homepage = "https://example.test/tool",
+                        .license = "MIT",
+                        .copyright = "Copyright 2026 Example Maintainers.",
+                        .version = "1.2.3",
+                        .source_url = "https://example.test/tool.git",
                     },
                 },
             },
@@ -67,6 +75,14 @@ test "schema json exposes flat command contract" {
     try expectContains(text, "\"examples\":[{\"title\":\"Run target\"");
     try expectContains(text, "\"exitCodes\":[{\"code\":0");
     try expectContains(text, "\"seeAlso\":[\"tool(1)\",\"tool-group-run(1)\"]");
+    try expectContains(text, "\"files\":[\"~/.config/tool/config.toml\"]");
+    try expectContains(text, "\"bugs\":[\"Report issues at https://example.test/tool/issues.\"]");
+    try expectContains(text, "\"authors\":[\"Example Maintainers\"]");
+    try expectContains(text, "\"homepage\":\"https://example.test/tool\"");
+    try expectContains(text, "\"license\":\"MIT\"");
+    try expectContains(text, "\"copyright\":\"Copyright 2026 Example Maintainers.\"");
+    try expectContains(text, "\"version\":\"1.2.3\"");
+    try expectContains(text, "\"sourceUrl\":\"https://example.test/tool.git\"");
 }
 
 test "schema options can omit inherited flags and docs" {

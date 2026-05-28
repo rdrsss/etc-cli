@@ -134,10 +134,25 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
             @compileError("cli.validate: command '" ++ node.name ++ "' has empty see_also entry");
         }
     }
+    validateStringList(node.name, "file", node.doc.files);
+    validateStringList(node.name, "bug", node.doc.bugs);
+    validateStringList(node.name, "author", node.doc.authors);
 
     // Recurse.
     for (node.cmds) |child| {
         validateNode(child, combined);
+    }
+}
+
+fn validateStringList(
+    comptime command_name: []const u8,
+    comptime label: []const u8,
+    comptime values: []const []const u8,
+) void {
+    for (values) |value| {
+        if (value.len == 0) {
+            @compileError("cli.validate: command '" ++ command_name ++ "' has empty doc " ++ label ++ " entry");
+        }
     }
 }
 

@@ -239,13 +239,20 @@ The v1 schema uses a flat command list. Each command entry includes its path,
 full command string, subcommands, flags, positionals, docs, and explicit
 metadata-only env behavior where `Flag.env` is present.
 
+Docs metadata also carries structured project fields for richer generated
+manuals and schemas: `files`, `bugs`, `authors`, `homepage`, `license`,
+`copyright`, `version`, and `source_url`. These fields are parser-neutral.
+They only affect generated documentation and machine-readable catalogs.
+
 ## Validation
 
 Call `comptime cli.validate(root);` near each command tree declaration. The
 validator rejects duplicate subcommands, duplicate inherited flags, invalid
 command/flag/positional syntax, generated args field-name collisions,
-mismatched default kinds, empty manual metadata, and required flags that also
-define defaults.
+mismatched default kinds, empty manual metadata entries, and required flags that
+also define defaults. Manual metadata validation covers examples, exit codes,
+notes, see-also entries, files, bugs, and authors so generated docs cannot carry
+blank table rows.
 
 Negative validation behavior is covered by compile-fail fixtures under
 `integration_tests/compile_fail/`. The default `zig build test` step runs those
@@ -265,4 +272,7 @@ zig build test
 That command runs source-local unit tests, downstream-style import tests for both
 `cli` and `etc_cli`, parser contract tests, dispatch tests, completion/help
 tests, man-page generation tests, schema generation tests, and compile-fail
-validation fixtures.
+validation fixtures. Snapshot contract tests pin representative help, man,
+completion, and schema output. If `mandoc` is installed locally, the test step
+also runs `mandoc -Tlint` over committed man-page snapshots; otherwise that lint
+gate prints a skip message and succeeds.

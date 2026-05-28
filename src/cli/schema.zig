@@ -155,7 +155,15 @@ fn renderDocs(comptime doc: doc_mod.Doc) []const u8 {
         out = out ++ "\"examples\":" ++ renderExamples(doc.examples) ++ ",";
         out = out ++ "\"exitCodes\":" ++ renderExitCodes(doc.exit_codes) ++ ",";
         out = out ++ "\"notes\":" ++ renderStringArray(doc.notes) ++ ",";
-        out = out ++ "\"seeAlso\":" ++ renderStringArray(doc.see_also);
+        out = out ++ "\"seeAlso\":" ++ renderStringArray(doc.see_also) ++ ",";
+        out = out ++ "\"files\":" ++ renderStringArray(doc.files) ++ ",";
+        out = out ++ "\"bugs\":" ++ renderStringArray(doc.bugs) ++ ",";
+        out = out ++ "\"authors\":" ++ renderStringArray(doc.authors) ++ ",";
+        out = out ++ "\"homepage\":" ++ jsonString(doc.homepage) ++ ",";
+        out = out ++ "\"license\":" ++ jsonString(doc.license) ++ ",";
+        out = out ++ "\"copyright\":" ++ jsonString(doc.copyright) ++ ",";
+        out = out ++ "\"version\":" ++ jsonString(doc.version) ++ ",";
+        out = out ++ "\"sourceUrl\":" ++ jsonString(doc.source_url);
         out = out ++ "}";
         return out;
     }

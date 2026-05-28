@@ -40,6 +40,14 @@ const root = cli.Cmd{
                             "Generated manual metadata does not change parser behavior.",
                         },
                         .see_also = &.{ "tool(1)", "tool-group(1)" },
+                        .files = &.{ "~/.config/tool/config.toml" },
+                        .bugs = &.{ "Report issues at https://example.test/tool/issues." },
+                        .authors = &.{ "Example Maintainers" },
+                        .homepage = "https://example.test/tool",
+                        .license = "MIT",
+                        .copyright = "Copyright 2026 Example Maintainers.",
+                        .version = "1.2.3",
+                        .source_url = "https://example.test/tool.git",
                     },
                 },
             },
@@ -100,6 +108,19 @@ test "subcommand man page includes inherited and local flags" {
     try expectContains(text, ".SH EXIT STATUS");
     try expectContains(text, ".B 2");
     try expectContains(text, ".SH NOTES");
+    try expectContains(text, ".SH FILES");
+    try expectContains(text, "~/.config/tool/config.toml");
+    try expectContains(text, ".SH PROJECT");
+    try expectContains(text, "https://example.test/tool");
+    try expectContains(text, "https://example.test/tool.git");
+    try expectContains(text, ".B Version");
+    try expectContains(text, "1.2.3");
+    try expectContains(text, ".SH BUGS");
+    try expectContains(text, "Report issues at https://example.test/tool/issues.");
+    try expectContains(text, ".SH AUTHORS");
+    try expectContains(text, "Example Maintainers");
+    try expectContains(text, ".SH COPYRIGHT");
+    try expectContains(text, "License: MIT");
     try expectContains(text, ".SH SEE ALSO");
     try expectContains(text, "tool(1), tool-group(1)");
 }

@@ -8,6 +8,14 @@ pub const Doc = struct {
     exit_codes: []const ExitCode = &.{},
     see_also: []const []const u8 = &.{},
     notes: []const []const u8 = &.{},
+    files: []const []const u8 = &.{},
+    bugs: []const []const u8 = &.{},
+    authors: []const []const u8 = &.{},
+    homepage: []const u8 = "",
+    license: []const u8 = "",
+    copyright: []const u8 = "",
+    version: []const u8 = "",
+    source_url: []const u8 = "",
 };
 
 pub const Example = struct {

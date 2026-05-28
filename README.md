@@ -136,7 +136,10 @@ chain.
 
 Completion scripts are generated at comptime for bash, zsh, and fish. Command
 and flag descriptions are escaped for zsh and fish completion output so common
-description text containing quotes or colons remains valid shell syntax.
+description text containing quotes or colons remains valid shell syntax. Bash
+completion uses `compgen`, which does not expose a portable description column;
+generated bash scripts therefore prioritize correct candidates and value
+completion.
 Flags and positionals can also declare static value completions:
 
 ```zig
@@ -275,4 +278,5 @@ tests, man-page generation tests, schema generation tests, and compile-fail
 validation fixtures. Snapshot contract tests pin representative help, man,
 completion, and schema output. If `mandoc` is installed locally, the test step
 also runs `mandoc -Tlint` over committed man-page snapshots; otherwise that lint
-gate prints a skip message and succeeds.
+gate prints a skip message and succeeds. Completion snapshots are linted with
+`bash -n`, `zsh -n`, and `fish -n` when those shells are installed.

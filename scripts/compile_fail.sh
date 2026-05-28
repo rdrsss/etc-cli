@@ -19,6 +19,7 @@ run_case() {
 }
 
 run_case integration_tests/compile_fail/duplicate_subcommand.zig "duplicate sub-command name"
+run_case integration_tests/compile_fail/alias_collision.zig "duplicate sub-command name or alias 'run'"
 run_case integration_tests/compile_fail/invalid_command_name.zig "invalid command name '-tool'"
 run_case integration_tests/compile_fail/duplicate_inherited_flag.zig "duplicate flag long name"
 run_case integration_tests/compile_fail/invalid_long_flag.zig "invalid long flag '-verbose'"

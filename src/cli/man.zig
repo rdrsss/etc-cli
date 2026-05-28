@@ -16,6 +16,8 @@ pub const Options = struct {
     source: []const u8 = "",
     manual: []const u8 = "",
     include_inherited_flags: bool = true,
+    include_hidden: bool = false,
+    include_deprecated: bool = true,
 };
 
 pub const Page = struct {
@@ -67,6 +69,7 @@ fn allPagesForNode(
             },
         };
         for (node.cmds) |child| {
+            if (!visibleCmd(child, options)) continue;
             out = out ++ allPagesForNode(root, child, path ++ [_][]const u8{child.name}, options);
         }
         return out;
@@ -118,23 +121,31 @@ fn renderPage(
             out = out ++ ".PP\n" ++ roff(long_desc) ++ "\n";
         }
 
-        if (node.cmds.len > 0) {
+        if (hasVisibleCommands(node.cmds, options)) {
             out = out ++ ".SH COMMANDS\n";
             for (node.cmds) |child| {
+                if (!visibleCmd(child, options)) continue;
                 out = out ++ ".TP\n";
                 out = out ++ ".B " ++ roff(child.name) ++ "\n";
                 if (child.desc.len > 0) out = out ++ roff(child.desc) ++ "\n";
+                if (child.deprecated) |d| out = out ++ roff(deprecationText(d)) ++ "\n";
             }
         }
 
-        if (flags.len > 0) {
+        if (hasVisibleFlags(flags, options)) {
             out = out ++ ".SH OPTIONS\n";
-            for (flags) |f| out = out ++ renderFlag(f);
+            for (flags) |f| {
+                if (!visibleFlag(f, options)) continue;
+                out = out ++ renderFlag(f);
+            }
         }
 
-        if (hasEnv(flags)) {
+        if (hasEnv(flags, options)) {
             out = out ++ ".SH ENVIRONMENT\n";
-            for (flags) |f| out = out ++ renderEnv(f);
+            for (flags) |f| {
+                if (!visibleFlag(f, options)) continue;
+                out = out ++ renderEnv(f);
+            }
         }
 
         if (node.positionals.len > 0) {
@@ -195,6 +206,7 @@ fn renderFlag(comptime f: flag_mod.Flag) []const u8 {
         if (f.required) out = out ++ ", required";
         if (f.default) |d| out = out ++ ", default: " ++ renderDefault(d);
         if (f.desc.len > 0) out = out ++ "\n" ++ roff(f.desc);
+        if (f.deprecated) |d| out = out ++ "\n" ++ roff(deprecationText(d));
         out = out ++ "\n";
         return out;
     }
@@ -247,10 +259,41 @@ fn renderSeeAlso(comptime see_also: []const []const u8) []const u8 {
     }
 }
 
-fn hasEnv(comptime flags: []const flag_mod.Flag) bool {
+fn hasEnv(comptime flags: []const flag_mod.Flag, comptime options: Options) bool {
     comptime {
-        for (flags) |f| if (f.env != null) return true;
+        for (flags) |f| if (visibleFlag(f, options) and f.env != null) return true;
         return false;
+    }
+}
+
+fn visibleCmd(comptime c: cmd_mod.Cmd, comptime options: Options) bool {
+    if (c.hidden and !options.include_hidden) return false;
+    if (c.deprecated != null and !options.include_deprecated) return false;
+    return true;
+}
+
+fn visibleFlag(comptime f: flag_mod.Flag, comptime options: Options) bool {
+    if (f.hidden and !options.include_hidden) return false;
+    if (f.deprecated != null and !options.include_deprecated) return false;
+    return true;
+}
+
+fn hasVisibleCommands(comptime cmds: []const cmd_mod.Cmd, comptime options: Options) bool {
+    for (cmds) |c| if (visibleCmd(c, options)) return true;
+    return false;
+}
+
+fn hasVisibleFlags(comptime flags: []const flag_mod.Flag, comptime options: Options) bool {
+    for (flags) |f| if (visibleFlag(f, options)) return true;
+    return false;
+}
+
+fn deprecationText(comptime d: anytype) []const u8 {
+    comptime {
+        var out: []const u8 = "Deprecated";
+        if (d.replacement) |replacement| out = out ++ "; use " ++ replacement;
+        if (d.message.len > 0) out = out ++ "; " ++ d.message;
+        return out ++ ".";
     }
 }
 

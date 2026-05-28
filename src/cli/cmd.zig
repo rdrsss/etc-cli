@@ -13,6 +13,7 @@
 const std = @import("std");
 const flag = @import("flag.zig");
 const doc_mod = @import("doc.zig");
+const meta_mod = @import("meta.zig");
 
 /// One node in the command tree.
 ///
@@ -22,6 +23,9 @@ const doc_mod = @import("doc.zig");
 /// `run` is type-erased; use `handler()` below to wrap a typed function.
 pub const Cmd = struct {
     name: []const u8,
+    aliases: []const []const u8 = &.{},
+    hidden: bool = false,
+    deprecated: ?meta_mod.Deprecation = null,
     /// Short one-line description used in subcommand listings (the
     /// COMMANDS table on the parent's help page) AND as the fallback
     /// lead-in on the command's own help page when `long_desc` is

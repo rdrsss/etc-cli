@@ -79,6 +79,22 @@ and `--about` write stdout and return `0`; parse errors write stderr and return
 `2`; handler errors write stderr and return `1`. Environment fallback and
 deprecation warnings are not runner-owned today.
 
+## Aliases and Visibility
+
+Commands and flags can declare aliases, hidden status, and deprecation metadata.
+Aliases parse to canonical command paths and canonical flag fields, so generated
+argument names remain stable during migrations:
+
+```zig
+.{ .name = "run", .aliases = &.{"go"} }
+.{ .long = "--name", .aliases = &.{"--title"}, .kind = .string }
+```
+
+Hidden commands and flags remain parseable but are omitted from help,
+completion, man pages, and schema output unless the generator option includes
+hidden items. Deprecated items remain parseable and render deprecation metadata
+in generated docs/schema; runner warnings are reserved for a later policy.
+
 ## Flag Values
 
 String and integer flags accept both common value forms:

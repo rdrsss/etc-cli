@@ -24,15 +24,23 @@ const cmd_mod = @import("cmd.zig");
 const flag_mod = @import("flag.zig");
 
 pub const Shell = enum { bash, zsh, fish };
+pub const Options = struct {
+    include_hidden: bool = false,
+    include_deprecated: bool = true,
+};
 
 /// Generate the completion script for `root` targeted at `shell`. The
 /// returned slice is comptime-allocated and lives in `.rodata`.
 pub fn script(comptime root: cmd_mod.Cmd, comptime shell: Shell) []const u8 {
+    return scriptWithOptions(root, shell, .{});
+}
+
+pub fn scriptWithOptions(comptime root: cmd_mod.Cmd, comptime shell: Shell, comptime options: Options) []const u8 {
     @setEvalBranchQuota(20_000_000);
     return comptime switch (shell) {
-        .bash => bashScript(root),
-        .zsh => zshScript(root),
-        .fish => fishScript(root),
+        .bash => bashScript(root, options),
+        .zsh => zshScript(root, options),
+        .fish => fishScript(root, options),
     };
 }
 
@@ -40,7 +48,7 @@ pub fn script(comptime root: cmd_mod.Cmd, comptime shell: Shell) []const u8 {
 // Bash
 // =========================================================================
 
-fn bashScript(comptime root: cmd_mod.Cmd) []const u8 {
+fn bashScript(comptime root: cmd_mod.Cmd, comptime options: Options) []const u8 {
     comptime {
         var out: []const u8 = "";
         out = out ++ "# " ++ root.name ++ " bash completion (auto-generated)\n";
@@ -69,17 +77,18 @@ fn bashScript(comptime root: cmd_mod.Cmd) []const u8 {
 
         // Root case: empty path → suggest root's subcommands + flags.
         out = out ++ "        \"\")\n";
-        out = out ++ "            cmds=\"" ++ joinCmdNames(root.cmds) ++ "\"\n";
-        out = out ++ "            flags=\"" ++ joinFlagNames(root.flags) ++ "\"\n";
+        out = out ++ "            cmds=\"" ++ joinCmdNames(root.cmds, options) ++ "\"\n";
+        out = out ++ "            flags=\"" ++ joinFlagNames(root.flags, options) ++ "\"\n";
         out = out ++ "            ;;\n";
 
         // One case per non-root node.
         const nodes = cmd_mod.allNodes(root);
         for (nodes) |n| {
+            if (!visibleCmd(n.cmd, options)) continue;
             out = out ++ "        \"" ++ joinPath(n.path) ++ "\")\n";
-            out = out ++ "            cmds=\"" ++ joinCmdNames(n.cmd.cmds) ++ "\"\n";
+            out = out ++ "            cmds=\"" ++ joinCmdNames(n.cmd.cmds, options) ++ "\"\n";
             const inherited = cmd_mod.collectInheritedFlags(root, n.path);
-            out = out ++ "            flags=\"" ++ joinFlagPair(inherited, n.cmd.flags) ++ "\"\n";
+            out = out ++ "            flags=\"" ++ joinFlagPair(inherited, n.cmd.flags, options) ++ "\"\n";
             out = out ++ "            ;;\n";
         }
 
@@ -108,7 +117,7 @@ fn bashScript(comptime root: cmd_mod.Cmd) []const u8 {
 // Zsh
 // =========================================================================
 
-fn zshScript(comptime root: cmd_mod.Cmd) []const u8 {
+fn zshScript(comptime root: cmd_mod.Cmd, comptime options: Options) []const u8 {
     comptime {
         var out: []const u8 = "";
         out = out ++ "#compdef " ++ root.name ++ "\n";
@@ -138,16 +147,17 @@ fn zshScript(comptime root: cmd_mod.Cmd) []const u8 {
 
         // Root case.
         out = out ++ "        \"\")\n";
-        out = out ++ "            cmds=(" ++ zshCmdPairs(root.cmds) ++ ")\n";
-        out = out ++ "            flags=(" ++ zshFlagPairs(root.flags) ++ ")\n";
+        out = out ++ "            cmds=(" ++ zshCmdPairs(root.cmds, options) ++ ")\n";
+        out = out ++ "            flags=(" ++ zshFlagPairs(root.flags, options) ++ ")\n";
         out = out ++ "            ;;\n";
 
         const nodes = cmd_mod.allNodes(root);
         for (nodes) |n| {
+            if (!visibleCmd(n.cmd, options)) continue;
             out = out ++ "        \"" ++ joinPath(n.path) ++ "\")\n";
-            out = out ++ "            cmds=(" ++ zshCmdPairs(n.cmd.cmds) ++ ")\n";
+            out = out ++ "            cmds=(" ++ zshCmdPairs(n.cmd.cmds, options) ++ ")\n";
             const inherited = cmd_mod.collectInheritedFlags(root, n.path);
-            out = out ++ "            flags=(" ++ zshFlagPairsPair(inherited, n.cmd.flags) ++ ")\n";
+            out = out ++ "            flags=(" ++ zshFlagPairsPair(inherited, n.cmd.flags, options) ++ ")\n";
             out = out ++ "            ;;\n";
         }
 
@@ -172,7 +182,7 @@ fn zshScript(comptime root: cmd_mod.Cmd) []const u8 {
 // Fish
 // =========================================================================
 
-fn fishScript(comptime root: cmd_mod.Cmd) []const u8 {
+fn fishScript(comptime root: cmd_mod.Cmd, comptime options: Options) []const u8 {
     comptime {
         var out: []const u8 = "";
         out = out ++ "# " ++ root.name ++ " fish completion (auto-generated)\n\n";
@@ -203,22 +213,27 @@ fn fishScript(comptime root: cmd_mod.Cmd) []const u8 {
 
         // Root commands and flags.
         for (root.cmds) |c| {
+            if (!visibleCmd(c, options)) continue;
             out = out ++ fishCmdLine(root.name, "", c);
         }
         for (root.flags) |f| {
+            if (!visibleFlag(f, options)) continue;
             out = out ++ fishFlagLine(root.name, "", f);
         }
 
         // Walk every other node.
         const nodes = cmd_mod.allNodes(root);
         for (nodes) |n| {
+            if (!visibleCmd(n.cmd, options)) continue;
             const path_str = joinPath(n.path);
             for (n.cmd.cmds) |c| {
+                if (!visibleCmd(c, options)) continue;
                 out = out ++ fishCmdLine(root.name, path_str, c);
             }
             // Owned flags only — fish lets the user repeat globals freely;
             // listing inherited flags at every depth would just duplicate.
             for (n.cmd.flags) |f| {
+                if (!visibleFlag(f, options)) continue;
                 out = out ++ fishFlagLine(root.name, path_str, f);
             }
         }
@@ -240,22 +255,26 @@ fn joinPath(comptime path: []const []const u8) []const u8 {
     }
 }
 
-fn joinCmdNames(comptime cmds: []const cmd_mod.Cmd) []const u8 {
+fn joinCmdNames(comptime cmds: []const cmd_mod.Cmd, comptime options: Options) []const u8 {
     comptime {
         var out: []const u8 = "";
-        for (cmds, 0..) |c, i| {
-            if (i > 0) out = out ++ " ";
+        var first = true;
+        for (cmds) |c| {
+            if (!visibleCmd(c, options)) continue;
+            if (!first) out = out ++ " ";
+            first = false;
             out = out ++ c.name;
         }
         return out;
     }
 }
 
-fn joinFlagNames(comptime flags: []const flag_mod.Flag) []const u8 {
+fn joinFlagNames(comptime flags: []const flag_mod.Flag, comptime options: Options) []const u8 {
     comptime {
         var out: []const u8 = "";
         var first = true;
         for (flags) |f| {
+            if (!visibleFlag(f, options)) continue;
             if (!first) out = out ++ " ";
             first = false;
             out = out ++ f.long;
@@ -270,35 +289,40 @@ fn joinFlagNames(comptime flags: []const flag_mod.Flag) []const u8 {
 fn joinFlagPair(
     comptime inherited: []const flag_mod.Flag,
     comptime owned: []const flag_mod.Flag,
+    comptime options: Options,
 ) []const u8 {
     comptime {
-        const out: []const u8 = joinFlagNames(inherited);
+        const out: []const u8 = joinFlagNames(inherited, options);
         if (owned.len > 0) {
             // joinFlagNames already appends --help -h; insert owned BEFORE that.
             // Simplest: rebuild from a merged slice.
             const merged = inherited ++ owned;
-            return joinFlagNames(merged);
+            return joinFlagNames(merged, options);
         }
         return out;
     }
 }
 
-fn zshCmdPairs(comptime cmds: []const cmd_mod.Cmd) []const u8 {
+fn zshCmdPairs(comptime cmds: []const cmd_mod.Cmd, comptime options: Options) []const u8 {
     comptime {
         var out: []const u8 = "";
-        for (cmds, 0..) |c, i| {
-            if (i > 0) out = out ++ " ";
+        var first = true;
+        for (cmds) |c| {
+            if (!visibleCmd(c, options)) continue;
+            if (!first) out = out ++ " ";
+            first = false;
             out = out ++ "\"" ++ zshEscape(c.name) ++ ":" ++ zshEscapeDesc(c.desc) ++ "\"";
         }
         return out;
     }
 }
 
-fn zshFlagPairs(comptime flags: []const flag_mod.Flag) []const u8 {
+fn zshFlagPairs(comptime flags: []const flag_mod.Flag, comptime options: Options) []const u8 {
     comptime {
         var out: []const u8 = "";
         var first = true;
         for (flags) |f| {
+            if (!visibleFlag(f, options)) continue;
             if (!first) out = out ++ " ";
             first = false;
             out = out ++ "\"" ++ zshEscape(f.long) ++ ":" ++ zshEscapeDesc(f.desc) ++ "\"";
@@ -315,10 +339,11 @@ fn zshFlagPairs(comptime flags: []const flag_mod.Flag) []const u8 {
 fn zshFlagPairsPair(
     comptime inherited: []const flag_mod.Flag,
     comptime owned: []const flag_mod.Flag,
+    comptime options: Options,
 ) []const u8 {
     comptime {
         const merged = inherited ++ owned;
-        return zshFlagPairs(merged);
+        return zshFlagPairs(merged, options);
     }
 }
 
@@ -358,6 +383,18 @@ fn fishFlagLine(
         out = out ++ "\n";
         return out;
     }
+}
+
+fn visibleCmd(comptime c: cmd_mod.Cmd, comptime options: Options) bool {
+    if (c.hidden and !options.include_hidden) return false;
+    if (c.deprecated != null and !options.include_deprecated) return false;
+    return true;
+}
+
+fn visibleFlag(comptime f: flag_mod.Flag, comptime options: Options) bool {
+    if (f.hidden and !options.include_hidden) return false;
+    if (f.deprecated != null and !options.include_deprecated) return false;
+    return true;
 }
 
 fn zshEscape(comptime s: []const u8) []const u8 {

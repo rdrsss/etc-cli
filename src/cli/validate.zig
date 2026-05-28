@@ -31,12 +31,14 @@ pub fn validate(comptime root: cmd_mod.Cmd) void {
 
 fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.Flag) void {
     validateCommandName(node.name);
+    validateCommandAliases(node);
+    validateDeprecation("command", node.name, node.deprecated);
 
     // Duplicate sub-command names.
     for (node.cmds, 0..) |a, i| {
         for (node.cmds[i + 1 ..]) |b| {
-            if (std.mem.eql(u8, a.name, b.name)) {
-                @compileError("cli.validate: duplicate sub-command name '" ++ a.name ++ "' under '" ++ node.name ++ "'");
+            if (commandNamesOverlap(a, b)) |name| {
+                @compileError("cli.validate: duplicate sub-command name or alias '" ++ name ++ "' under '" ++ node.name ++ "'");
             }
         }
     }
@@ -47,8 +49,8 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
     // Duplicate long names.
     for (combined, 0..) |a, i| {
         for (combined[i + 1 ..]) |b| {
-            if (std.mem.eql(u8, a.long, b.long)) {
-                @compileError("cli.validate: duplicate flag long name '" ++ a.long ++ "' in '" ++ node.name ++ "' (or inherited)");
+            if (flagLongNamesOverlap(a, b)) |name| {
+                @compileError("cli.validate: duplicate flag long name or alias '" ++ name ++ "' in '" ++ node.name ++ "' (or inherited)");
             }
         }
     }
@@ -67,6 +69,8 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
     // Per-flag invariants.
     for (node.flags) |f| {
         validateLongFlagName(node.name, f.long);
+        validateFlagAliases(node.name, f);
+        validateDeprecation("flag", f.long, f.deprecated);
         if (f.short) |short| validateShortFlagName(node.name, f.long, short);
         if (f.kind == .bool and f.value_name != null) {
             @compileError("cli.validate: flag '" ++ f.long ++ "' is bool and cannot define value_name");
@@ -139,9 +143,47 @@ fn validateCommandName(comptime name: []const u8) void {
     }
 }
 
+fn validateCommandAliases(comptime node: cmd_mod.Cmd) void {
+    for (node.aliases, 0..) |alias, i| {
+        if (!isCliToken(alias)) {
+            @compileError("cli.validate: invalid command alias '" ++ alias ++ "' for command '" ++ node.name ++ "'");
+        }
+        if (std.mem.eql(u8, node.name, alias)) {
+            @compileError("cli.validate: command alias '" ++ alias ++ "' duplicates canonical command name '" ++ node.name ++ "'");
+        }
+        for (node.aliases[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, alias, other)) {
+                @compileError("cli.validate: duplicate command alias '" ++ alias ++ "' for command '" ++ node.name ++ "'");
+            }
+        }
+    }
+}
+
 fn validateLongFlagName(comptime command_name: []const u8, comptime long: []const u8) void {
     if (!std.mem.startsWith(u8, long, "--") or long.len <= 2 or !isCliToken(long[2..])) {
         @compileError("cli.validate: invalid long flag '" ++ long ++ "' in command '" ++ command_name ++ "'; use --name with alphanumeric characters and hyphens");
+    }
+}
+
+fn validateFlagAliases(comptime command_name: []const u8, comptime f: flag.Flag) void {
+    for (f.aliases, 0..) |alias, i| {
+        validateLongFlagName(command_name, alias);
+        if (std.mem.eql(u8, f.long, alias)) {
+            @compileError("cli.validate: flag alias '" ++ alias ++ "' duplicates canonical flag name '" ++ f.long ++ "'");
+        }
+        for (f.aliases[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, alias, other)) {
+                @compileError("cli.validate: duplicate flag alias '" ++ alias ++ "' for flag '" ++ f.long ++ "'");
+            }
+        }
+    }
+}
+
+fn validateDeprecation(comptime kind: []const u8, comptime name: []const u8, comptime deprecated: anytype) void {
+    if (deprecated) |d| {
+        if (d.message.len == 0 and d.replacement == null) {
+            @compileError("cli.validate: deprecated " ++ kind ++ " '" ++ name ++ "' must define a message or replacement");
+        }
     }
 }
 
@@ -207,6 +249,30 @@ fn validateGeneratedFieldNames(comptime node: cmd_mod.Cmd, comptime combined_fla
 
 fn fieldCollision(comptime command_name: []const u8, comptime field_name: []const u8) noreturn {
     @compileError("cli.validate: generated args field '" ++ field_name ++ "' collides in command '" ++ command_name ++ "'");
+}
+
+fn commandNamesOverlap(comptime a: cmd_mod.Cmd, comptime b: cmd_mod.Cmd) ?[]const u8 {
+    if (std.mem.eql(u8, a.name, b.name)) return a.name;
+    for (a.aliases) |name| {
+        if (std.mem.eql(u8, name, b.name)) return name;
+        for (b.aliases) |other| if (std.mem.eql(u8, name, other)) return name;
+    }
+    for (b.aliases) |name| {
+        if (std.mem.eql(u8, name, a.name)) return name;
+    }
+    return null;
+}
+
+fn flagLongNamesOverlap(comptime a: flag.Flag, comptime b: flag.Flag) ?[]const u8 {
+    if (std.mem.eql(u8, a.long, b.long)) return a.long;
+    for (a.aliases) |name| {
+        if (std.mem.eql(u8, name, b.long)) return name;
+        for (b.aliases) |other| if (std.mem.eql(u8, name, other)) return name;
+    }
+    for (b.aliases) |name| {
+        if (std.mem.eql(u8, name, a.long)) return name;
+    }
+    return null;
 }
 
 fn isCliToken(comptime s: []const u8) bool {

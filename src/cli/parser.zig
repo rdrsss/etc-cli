@@ -242,7 +242,7 @@ fn parseImpl(
             if (!passthrough) {
                 var matched = false;
                 for (current.cmds) |c| {
-                    if (std.mem.eql(u8, c.name, tok)) {
+                    if (commandMatches(c, tok)) {
                         path_buf[path_len] = c.name;
                         path_len += 1;
                         ancestors[path_len] = c;
@@ -346,7 +346,7 @@ fn flagWantsValue(scope: []const Cmd, tok: []const u8) bool {
     if (tok.len >= 2 and tok[0] == '-' and tok[1] == '-') {
         for (scope) |node| {
             for (node.flags) |f| {
-                if (std.mem.eql(u8, f.long, tok)) return f.kind != .bool;
+                if (flagLongMatches(f, tok)) return f.kind != .bool;
             }
         }
         return false;
@@ -566,10 +566,17 @@ fn matchFlag(comptime all_flags: []const Flag, tok: []const u8) ?MatchedFlag {
     // flags. Bool equals syntax remains unsupported and falls through to
     // UnknownFlag.
     if (tok.len >= 2 and tok[0] == '-' and tok[1] == '-') {
-        for (all_flags, 0..) |f, i| {
-            if (std.mem.eql(u8, f.long, tok)) return .{ .idx = i };
-            if (f.kind != .bool and std.mem.startsWith(u8, tok, f.long) and tok.len > f.long.len and tok[f.long.len] == '=') {
-                return .{ .idx = i, .inline_value = tok[f.long.len + 1 ..] };
+        inline for (all_flags, 0..) |f, i| {
+            if (flagLongMatches(f, tok)) return .{ .idx = i };
+            if (f.kind != .bool) {
+                if (std.mem.startsWith(u8, tok, f.long) and tok.len > f.long.len and tok[f.long.len] == '=') {
+                    return .{ .idx = i, .inline_value = tok[f.long.len + 1 ..] };
+                }
+                inline for (f.aliases) |alias| {
+                    if (std.mem.startsWith(u8, tok, alias) and tok.len > alias.len and tok[alias.len] == '=') {
+                        return .{ .idx = i, .inline_value = tok[alias.len + 1 ..] };
+                    }
+                }
             }
         }
         return null;
@@ -583,6 +590,22 @@ fn matchFlag(comptime all_flags: []const Flag, tok: []const u8) ?MatchedFlag {
         return null;
     }
     return null;
+}
+
+fn commandMatches(command: Cmd, tok: []const u8) bool {
+    if (std.mem.eql(u8, command.name, tok)) return true;
+    for (command.aliases) |alias| {
+        if (std.mem.eql(u8, alias, tok)) return true;
+    }
+    return false;
+}
+
+fn flagLongMatches(f: Flag, tok: []const u8) bool {
+    if (std.mem.eql(u8, f.long, tok)) return true;
+    for (f.aliases) |alias| {
+        if (std.mem.eql(u8, alias, tok)) return true;
+    }
+    return false;
 }
 
 fn setFlagValue(

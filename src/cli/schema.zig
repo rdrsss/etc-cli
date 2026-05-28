@@ -13,6 +13,8 @@ pub const Options = struct {
     include_inherited_flags: bool = true,
     include_docs: bool = true,
     include_env_metadata: bool = true,
+    include_hidden: bool = false,
+    include_deprecated: bool = true,
 };
 
 pub fn json(comptime root: cmd_mod.Cmd, comptime options: Options) []const u8 {
@@ -29,6 +31,7 @@ fn renderRoot(comptime root: cmd_mod.Cmd, comptime options: Options) []const u8 
         out = out ++ "\"commands\":[";
         out = out ++ renderCommand(root, root, &.{}, options);
         for (cmd_mod.allNodes(root)) |node| {
+            if (!visibleCmd(node.cmd, options)) continue;
             out = out ++ "," ++ renderCommand(root, node.cmd, node.path, options);
         }
         out = out ++ "]}";
@@ -45,11 +48,14 @@ fn renderCommand(
     comptime {
         var out: []const u8 = "{";
         out = out ++ "\"name\":" ++ jsonString(node.name) ++ ",";
+        out = out ++ "\"aliases\":" ++ renderStringArray(node.aliases) ++ ",";
+        out = out ++ "\"hidden\":" ++ boolText(node.hidden) ++ ",";
+        out = out ++ "\"deprecated\":" ++ renderDeprecation(node.deprecated) ++ ",";
         out = out ++ "\"path\":" ++ renderStringArray(path) ++ ",";
         out = out ++ "\"command\":" ++ jsonString(commandPath(root, path)) ++ ",";
         out = out ++ "\"summary\":" ++ jsonString(if (options.include_docs) node.desc else "") ++ ",";
         out = out ++ "\"description\":" ++ jsonString(if (options.include_docs) (if (node.long_desc.len > 0) node.long_desc else node.desc) else "") ++ ",";
-        out = out ++ "\"subcommands\":" ++ renderSubcommands(node.cmds) ++ ",";
+        out = out ++ "\"subcommands\":" ++ renderSubcommands(node.cmds, options) ++ ",";
         out = out ++ "\"flags\":" ++ renderFlags(root, node, path, options) ++ ",";
         out = out ++ "\"positionals\":" ++ renderPositionals(node.positionals, options);
         if (options.include_docs) out = out ++ ",\"docs\":" ++ renderDocs(node.doc);
@@ -69,11 +75,13 @@ fn renderFlags(
         var out: []const u8 = "[";
         var first = true;
         for (inherited) |f| {
+            if (!visibleFlag(f, options)) continue;
             if (!first) out = out ++ ",";
             first = false;
             out = out ++ renderFlag(f, "inherited", options);
         }
         for (node.flags) |f| {
+            if (!visibleFlag(f, options)) continue;
             if (!first) out = out ++ ",";
             first = false;
             out = out ++ renderFlag(f, "local", options);
@@ -87,6 +95,9 @@ fn renderFlag(comptime f: flag_mod.Flag, comptime source: []const u8, comptime o
     comptime {
         var out: []const u8 = "{";
         out = out ++ "\"long\":" ++ jsonString(f.long) ++ ",";
+        out = out ++ "\"aliases\":" ++ renderStringArray(f.aliases) ++ ",";
+        out = out ++ "\"hidden\":" ++ boolText(f.hidden) ++ ",";
+        out = out ++ "\"deprecated\":" ++ renderDeprecation(f.deprecated) ++ ",";
         out = out ++ "\"short\":";
         if (f.short) |s| {
             out = out ++ jsonString(&[_]u8{s});
@@ -179,16 +190,48 @@ fn renderExitCodes(comptime exit_codes: []const doc_mod.ExitCode) []const u8 {
     }
 }
 
-fn renderSubcommands(comptime cmds: []const cmd_mod.Cmd) []const u8 {
+fn renderSubcommands(comptime cmds: []const cmd_mod.Cmd, comptime options: Options) []const u8 {
     comptime {
         var out: []const u8 = "[";
-        for (cmds, 0..) |child, idx| {
-            if (idx > 0) out = out ++ ",";
+        var first = true;
+        for (cmds) |child| {
+            if (!visibleCmd(child, options)) continue;
+            if (!first) out = out ++ ",";
+            first = false;
             out = out ++ jsonString(child.name);
         }
         out = out ++ "]";
         return out;
     }
+}
+
+fn renderDeprecation(comptime deprecated: anytype) []const u8 {
+    comptime {
+        if (deprecated == null) return "null";
+        const d = deprecated.?;
+        var out: []const u8 = "{";
+        out = out ++ "\"message\":" ++ jsonString(d.message) ++ ",";
+        out = out ++ "\"replacement\":";
+        if (d.replacement) |replacement| {
+            out = out ++ jsonString(replacement);
+        } else {
+            out = out ++ "null";
+        }
+        out = out ++ "}";
+        return out;
+    }
+}
+
+fn visibleCmd(comptime c: cmd_mod.Cmd, comptime options: Options) bool {
+    if (c.hidden and !options.include_hidden) return false;
+    if (c.deprecated != null and !options.include_deprecated) return false;
+    return true;
+}
+
+fn visibleFlag(comptime f: flag_mod.Flag, comptime options: Options) bool {
+    if (f.hidden and !options.include_hidden) return false;
+    if (f.deprecated != null and !options.include_deprecated) return false;
+    return true;
 }
 
 fn renderStringArray(comptime values: []const []const u8) []const u8 {

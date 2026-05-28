@@ -39,6 +39,7 @@
 
 const flag = @import("flag.zig");
 const cmd = @import("cmd.zig");
+const meta_mod = @import("meta.zig");
 const validate_mod = @import("validate.zig");
 const help_mod = @import("help.zig");
 const completion_mod = @import("completion.zig");
@@ -62,6 +63,7 @@ pub const Flag = flag.Flag;
 pub const Positional = flag.Positional;
 pub const Kind = flag.Kind;
 pub const Default = flag.Default;
+pub const Deprecation = meta_mod.Deprecation;
 pub const Doc = doc_mod.Doc;
 pub const Example = doc_mod.Example;
 pub const ExitCode = doc_mod.ExitCode;
@@ -86,6 +88,7 @@ pub const validate = validate_mod.validate;
 
 // Comptime help-text generation.
 pub const helpText = help_mod.helpText;
+pub const helpTextWithOptions = help_mod.helpTextWithOptions;
 
 // Comptime shell-completion script generation.
 pub const completion = completion_mod;
@@ -122,6 +125,7 @@ pub const Platform = platform;
 test {
     _ = flag;
     _ = cmd;
+    _ = meta_mod;
     _ = validate_mod;
     _ = help_mod;
     _ = completion_mod;

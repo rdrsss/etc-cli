@@ -182,6 +182,18 @@ pub fn build(b: *std.Build) void {
     });
     const run_completion_value_contract_tests = b.addRunArtifact(completion_value_contract_tests);
 
+    const parser_expansion_contract_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("integration_tests/parser_expansion_contract_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "cli", .module = cli_mod },
+            },
+        }),
+    });
+    const run_parser_expansion_contract_tests = b.addRunArtifact(parser_expansion_contract_tests);
+
     const run_compile_fail_tests = b.addSystemCommand(&.{ "sh", "scripts/compile_fail.sh" });
 
     const test_step = b.step("test", "Run unit and integration tests");
@@ -199,5 +211,6 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_app_runner_contract_tests.step);
     test_step.dependOn(&run_alias_visibility_contract_tests.step);
     test_step.dependOn(&run_completion_value_contract_tests.step);
+    test_step.dependOn(&run_parser_expansion_contract_tests.step);
     test_step.dependOn(&run_compile_fail_tests.step);
 }

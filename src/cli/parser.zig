@@ -431,6 +431,10 @@ fn parseLeaf(
         }
 
         if (!seen_double_dash and tok.len >= 2 and tok[0] == '-') {
+            if (tok.len > 2 and tok[0] == '-' and tok[1] != '-') {
+                if (try parseShortExpansion(Args, &args, all_flags, tok, &seen, err_out)) continue;
+            }
+
             // Flag.
             // Comptime guard: when a leaf has zero flag specs, the entire
             // matched-flag branch is dead — but Zig's sema still tries to
@@ -448,7 +452,16 @@ fn parseLeaf(
                 seen[idx] = true;
 
                 if (f.kind == .bool) {
-                    setFlagValue(Args, &args, all_flags, idx, .{ .bool = true });
+                    const value = if (matched.?.negated)
+                        false
+                    else if (matched.?.inline_value) |raw|
+                        parseBoolValue(raw) orelse {
+                            err_out.* = .{ .kind = err_mod.Parse.InvalidValue, .flag = f.long, .arg = raw };
+                            return err_mod.Parse.InvalidValue;
+                        }
+                    else
+                        true;
+                    setFlagValue(Args, &args, all_flags, idx, .{ .bool = value });
                     continue;
                 }
 
@@ -559,6 +572,7 @@ fn parseLeaf(
 const MatchedFlag = struct {
     idx: usize,
     inline_value: ?[]const u8 = null,
+    negated: bool = false,
 };
 
 fn matchFlag(comptime all_flags: []const Flag, tok: []const u8) ?MatchedFlag {
@@ -568,7 +582,18 @@ fn matchFlag(comptime all_flags: []const Flag, tok: []const u8) ?MatchedFlag {
     if (tok.len >= 2 and tok[0] == '-' and tok[1] == '-') {
         inline for (all_flags, 0..) |f, i| {
             if (flagLongMatches(f, tok)) return .{ .idx = i };
+            if (f.kind == .bool and flagNegationMatches(f, tok)) return .{ .idx = i, .negated = true };
             if (f.kind != .bool) {
+                if (std.mem.startsWith(u8, tok, f.long) and tok.len > f.long.len and tok[f.long.len] == '=') {
+                    return .{ .idx = i, .inline_value = tok[f.long.len + 1 ..] };
+                }
+                inline for (f.aliases) |alias| {
+                    if (std.mem.startsWith(u8, tok, alias) and tok.len > alias.len and tok[alias.len] == '=') {
+                        return .{ .idx = i, .inline_value = tok[alias.len + 1 ..] };
+                    }
+                }
+            }
+            if (f.kind == .bool) {
                 if (std.mem.startsWith(u8, tok, f.long) and tok.len > f.long.len and tok[f.long.len] == '=') {
                     return .{ .idx = i, .inline_value = tok[f.long.len + 1 ..] };
                 }
@@ -592,6 +617,68 @@ fn matchFlag(comptime all_flags: []const Flag, tok: []const u8) ?MatchedFlag {
     return null;
 }
 
+fn parseShortExpansion(
+    comptime Args: type,
+    args: *Args,
+    comptime all_flags: []const Flag,
+    tok: []const u8,
+    seen: *[all_flags.len]bool,
+    err_out: *err_mod.Detail,
+) err_mod.Parse!bool {
+    if (all_flags.len == 0) return false;
+
+    const first_idx = matchShortFlag(all_flags, tok[1]) orelse return false;
+    const first_flag = all_flags[first_idx];
+    if (first_flag.kind != .bool) {
+        const raw = tok[2..];
+        if (raw.len == 0) return false;
+        if (seen[first_idx]) {
+            err_out.* = .{ .kind = err_mod.Parse.DuplicateFlag, .flag = first_flag.long };
+            return err_mod.Parse.DuplicateFlag;
+        }
+        seen[first_idx] = true;
+        switch (first_flag.kind) {
+            .bool => unreachable,
+            .string => setFlagValue(Args, args, all_flags, first_idx, .{ .string = raw }),
+            .int => {
+                const v = std.fmt.parseInt(i64, raw, 10) catch {
+                    err_out.* = .{ .kind = err_mod.Parse.InvalidValue, .flag = first_flag.long, .arg = raw };
+                    return err_mod.Parse.InvalidValue;
+                };
+                setFlagValue(Args, args, all_flags, first_idx, .{ .int = v });
+            },
+        }
+        return true;
+    }
+
+    var pos: usize = 1;
+    while (pos < tok.len) : (pos += 1) {
+        const idx = matchShortFlag(all_flags, tok[pos]) orelse return false;
+        if (all_flags[idx].kind != .bool) return false;
+    }
+
+    pos = 1;
+    while (pos < tok.len) : (pos += 1) {
+        const idx = matchShortFlag(all_flags, tok[pos]).?;
+        const f = all_flags[idx];
+        if (f.kind != .bool) return false;
+        if (seen[idx]) {
+            err_out.* = .{ .kind = err_mod.Parse.DuplicateFlag, .flag = f.long };
+            return err_mod.Parse.DuplicateFlag;
+        }
+        seen[idx] = true;
+        setFlagValue(Args, args, all_flags, idx, .{ .bool = true });
+    }
+    return true;
+}
+
+fn matchShortFlag(comptime all_flags: []const Flag, short: u8) ?usize {
+    inline for (all_flags, 0..) |f, i| {
+        if (f.short) |s| if (s == short) return i;
+    }
+    return null;
+}
+
 fn commandMatches(command: Cmd, tok: []const u8) bool {
     if (std.mem.eql(u8, command.name, tok)) return true;
     for (command.aliases) |alias| {
@@ -606,6 +693,26 @@ fn flagLongMatches(f: Flag, tok: []const u8) bool {
         if (std.mem.eql(u8, alias, tok)) return true;
     }
     return false;
+}
+
+fn flagNegationMatches(comptime f: Flag, tok: []const u8) bool {
+    if (std.mem.startsWith(u8, f.long, "--")) {
+        const negated = "--no-" ++ f.long[2..];
+        if (std.mem.eql(u8, negated, tok)) return true;
+    }
+    inline for (f.aliases) |alias| {
+        if (std.mem.startsWith(u8, alias, "--")) {
+            const negated = "--no-" ++ alias[2..];
+            if (std.mem.eql(u8, negated, tok)) return true;
+        }
+    }
+    return false;
+}
+
+fn parseBoolValue(raw: []const u8) ?bool {
+    if (std.mem.eql(u8, raw, "true")) return true;
+    if (std.mem.eql(u8, raw, "false")) return false;
+    return null;
 }
 
 fn setFlagValue(

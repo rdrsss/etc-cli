@@ -102,10 +102,26 @@ String and integer flags accept both common value forms:
 ```sh
 --name value
 --name=value
+-nvalue
 ```
 
-Boolean flags are presence-based. `--verbose` is supported; `--verbose=true` is
-not part of the current contract.
+Boolean flags accept presence, explicit values, negation, and unambiguous short
+bundles:
+
+```sh
+--verbose
+--verbose=true
+--verbose=false
+--no-color
+-vf
+```
+
+Attached short values are accepted for non-bool short flags, for example
+`-nname` and `-c3`. Short bundles are only accepted when every bundled short
+flag is boolean; ambiguous forms fail as unknown flags. Scalar flags still reject
+duplicates. Enum/choice kinds, floats, path/duration kinds, custom validators,
+flag groups, list-valued flags, and positional defaults are deferred API work;
+use strings plus application validation for those cases today.
 
 ## Environment Metadata
 

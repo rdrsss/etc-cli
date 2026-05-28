@@ -138,11 +138,11 @@ test "flag equals syntax shares duplicate and invalid-value handling" {
     }
 }
 
-test "flag equals syntax remains unsupported for bool flags" {
+test "flag equals syntax supports bool flags" {
     var detail: cli.Detail = undefined;
     const result = cli.parse(root, &.{ "tool", "act", "--name=n", "--force=true", "1" }, &detail);
-    try std.testing.expectError(cli.Parse.UnknownFlag, result);
-    try std.testing.expectEqualStrings("--force=true", detail.arg.?);
+    const args = (try result).match.act;
+    try std.testing.expect(args.force);
 }
 
 test "Flag.env metadata is reserved and does not satisfy required flags" {

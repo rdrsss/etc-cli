@@ -150,6 +150,24 @@ try dir.writeFile(.{
 or write man pages during normal tests. Packaging code should decide the output
 directory, whether to gzip pages, and how to install them into `man1`.
 
+## Command Schema
+
+LLMs and tool routers should consume structured schema output instead of man
+pages. The schema is compact JSON generated at comptime from the same command
+tree, so agents do not need to infer flags, positionals, requiredness, defaults,
+or examples from prose:
+
+```zig
+const schema = comptime cli.schema.json(root, .{
+    .include_inherited_flags = true,
+    .include_docs = true,
+});
+```
+
+The v1 schema uses a flat command list. Each command entry includes its path,
+full command string, subcommands, flags, positionals, docs, and explicit
+metadata-only env behavior where `Flag.env` is present.
+
 ## Validation
 
 Call `comptime cli.validate(root);` near each command tree declaration. The
@@ -171,4 +189,5 @@ zig build test
 
 That command runs source-local unit tests, downstream-style import tests for both
 `cli` and `etc_cli`, parser contract tests, dispatch tests, completion/help
-tests, man-page generation tests, and compile-fail validation fixtures.
+tests, man-page generation tests, schema generation tests, and compile-fail
+validation fixtures.

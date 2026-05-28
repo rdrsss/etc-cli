@@ -51,4 +51,7 @@ test "consumer can import cli module name and parse a command tree" {
 
     const man = comptime cli.man.page(cli_root, &.{"run"}, .{});
     try std.testing.expect(std.mem.indexOf(u8, man, ".SH NAME") != null);
+
+    const schema = comptime cli.schema.json(cli_root, .{});
+    try std.testing.expect(std.mem.indexOf(u8, schema, "\"root\":\"tool\"") != null);
 }

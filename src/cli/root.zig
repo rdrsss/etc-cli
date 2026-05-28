@@ -44,6 +44,7 @@ const help_mod = @import("help.zig");
 const completion_mod = @import("completion.zig");
 const man_mod = @import("man.zig");
 const doc_mod = @import("doc.zig");
+const schema_mod = @import("schema.zig");
 const parser = @import("parser.zig");
 const err_mod = @import("error.zig");
 const platform = @import("platform/root.zig");
@@ -91,6 +92,9 @@ pub const Shell = completion_mod.Shell;
 // Comptime man-page generation.
 pub const man = man_mod;
 
+// Comptime machine-readable command schema generation.
+pub const schema = schema_mod;
+
 // Runtime entry points.
 pub const parse = parser.parse;
 pub const dispatch = parser.dispatch;
@@ -115,6 +119,7 @@ test {
     _ = completion_mod;
     _ = man_mod;
     _ = doc_mod;
+    _ = schema_mod;
     _ = parser;
     _ = err_mod;
     _ = duration;

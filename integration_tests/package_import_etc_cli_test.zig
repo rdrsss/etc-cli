@@ -50,4 +50,7 @@ test "consumer can import etc_cli module name and parse a command tree" {
 
     const man = comptime etc_cli.man.page(root, &.{"run"}, .{});
     try std.testing.expect(std.mem.indexOf(u8, man, ".SH NAME") != null);
+
+    const schema = comptime etc_cli.schema.json(root, .{});
+    try std.testing.expect(std.mem.indexOf(u8, schema, "\"root\":\"tool\"") != null);
 }

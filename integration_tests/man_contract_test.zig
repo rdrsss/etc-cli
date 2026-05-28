@@ -61,10 +61,12 @@ test "subcommand man page includes inherited and local flags" {
     try expectContains(text, "\\-\\-verbose");
     try expectContains(text, "\\-\\-mode");
     try expectContains(text, "\\-\\-name");
-    try expectContains(text, "\\-\\-count, \\-c");
+    try expectContains(text, "\\-\\-count N, \\-c N");
+    try expectContains(text, "type: int, value: N, default: 1");
     try expectContains(text, ".SH ARGUMENTS");
     try expectContains(text, ".I target");
     try expectContains(text, ".I label");
+    try expectContains(text, "type: string, optional");
 }
 
 test "options can set title and manual metadata" {
@@ -85,6 +87,36 @@ test "inherited flags can be omitted" {
     try std.testing.expect(std.mem.indexOf(u8, text, "\\-\\-verbose") == null);
     try std.testing.expect(std.mem.indexOf(u8, text, "\\-\\-mode") == null);
     try expectContains(text, "\\-\\-name");
+}
+
+test "empty sections are omitted" {
+    const empty = cli.Cmd{ .name = "empty" };
+    const text = comptime cli.man.page(empty, &.{}, .{});
+
+    try expectContains(text, ".SH NAME");
+    try expectContains(text, ".SH SYNOPSIS");
+    try std.testing.expect(std.mem.indexOf(u8, text, ".SH DESCRIPTION") == null);
+    try std.testing.expect(std.mem.indexOf(u8, text, ".SH COMMANDS") == null);
+    try std.testing.expect(std.mem.indexOf(u8, text, ".SH OPTIONS") == null);
+    try std.testing.expect(std.mem.indexOf(u8, text, ".SH ARGUMENTS") == null);
+}
+
+test "roff-sensitive descriptions are escaped" {
+    const escaping_root = cli.Cmd{
+        .name = "escape",
+        .desc = ".macro-looking\n'control line\npath \\ value",
+        .flags = &.{
+            .{ .long = "--dry-run", .desc = ".flag macro", .kind = .bool },
+        },
+    };
+    const text = comptime cli.man.page(escaping_root, &.{}, .{ .title = "escape \"quoted\"" });
+
+    try expectContains(text, "escape \\(dqquoted\\(dq");
+    try expectContains(text, "\\&.macro-looking");
+    try expectContains(text, "\n\\&'control line");
+    try expectContains(text, "path \\e value");
+    try expectContains(text, "\\-\\-dry\\-run");
+    try expectContains(text, "\\&.flag macro");
 }
 
 fn expectContains(haystack: []const u8, needle: []const u8) !void {

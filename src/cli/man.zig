@@ -54,10 +54,10 @@ fn renderPage(
         const flags = flagsFor(root, node, path, options.include_inherited_flags);
 
         var out: []const u8 = "";
-        out = out ++ ".TH \"" ++ roff(title) ++ "\" \"" ++ std.fmt.comptimePrint("{d}", .{options.section}) ++ "\"";
-        out = out ++ " \"" ++ roff(options.date) ++ "\"";
-        out = out ++ " \"" ++ roff(options.source) ++ "\"";
-        out = out ++ " \"" ++ roff(options.manual) ++ "\"\n";
+        out = out ++ ".TH \"" ++ roffQuoted(title) ++ "\" \"" ++ std.fmt.comptimePrint("{d}", .{options.section}) ++ "\"";
+        out = out ++ " \"" ++ roffQuoted(options.date) ++ "\"";
+        out = out ++ " \"" ++ roffQuoted(options.source) ++ "\"";
+        out = out ++ " \"" ++ roffQuoted(options.manual) ++ "\"\n";
 
         out = out ++ ".SH NAME\n";
         out = out ++ roff(name);
@@ -77,7 +77,7 @@ fn renderPage(
                 synopsis_tail = synopsis_tail ++ "[" ++ roff(p.name) ++ "]";
             }
         }
-        if (synopsis_tail.len > 0) out = out ++ ".RI \"" ++ synopsis_tail ++ "\"\n";
+        if (synopsis_tail.len > 0) out = out ++ ".RI \"" ++ roffQuoted(synopsis_tail) ++ "\"\n";
 
         const long_desc = if (node.long_desc.len > 0) node.long_desc else node.desc;
         if (long_desc.len > 0) {
@@ -124,12 +124,18 @@ fn flagsFor(
 
 fn renderFlag(comptime f: flag_mod.Flag) []const u8 {
     comptime {
+        const value = valuePlaceholder(f.kind);
         var out: []const u8 = ".TP\n.B " ++ roffOption(f.long);
-        if (f.short) |s| out = out ++ ", " ++ roffOption("-" ++ &[_]u8{s});
+        if (value.len > 0) out = out ++ " " ++ value;
+        if (f.short) |s| {
+            out = out ++ ", " ++ roffOption("-" ++ &[_]u8{s});
+            if (value.len > 0) out = out ++ " " ++ value;
+        }
         out = out ++ "\n";
-        out = out ++ @tagName(f.kind);
+        out = out ++ "type: " ++ @tagName(f.kind);
+        if (value.len > 0) out = out ++ ", value: " ++ value;
         if (f.required) out = out ++ ", required";
-        if (f.default) |d| out = out ++ ", default=" ++ renderDefault(d);
+        if (f.default) |d| out = out ++ ", default: " ++ renderDefault(d);
         if (f.desc.len > 0) out = out ++ "\n" ++ roff(f.desc);
         out = out ++ "\n";
         return out;
@@ -139,7 +145,7 @@ fn renderFlag(comptime f: flag_mod.Flag) []const u8 {
 fn renderPositional(comptime p: flag_mod.Positional) []const u8 {
     comptime {
         var out: []const u8 = ".TP\n.I " ++ roff(p.name) ++ "\n";
-        out = out ++ @tagName(p.kind);
+        out = out ++ "type: " ++ @tagName(p.kind);
         if (!p.required) out = out ++ ", optional";
         if (p.desc.len > 0) out = out ++ "\n" ++ roff(p.desc);
         out = out ++ "\n";
@@ -183,8 +189,26 @@ fn roff(comptime text: []const u8) []const u8 {
     comptime {
         if (text.len == 0) return "";
         var out: []const u8 = "";
-        if (text[0] == '.' or text[0] == '\'') out = out ++ "\\&";
-        for (text) |c| out = out ++ roffChar(c);
+        var line_start = true;
+        for (text) |c| {
+            if (line_start and (c == '.' or c == '\'')) out = out ++ "\\&";
+            out = out ++ roffChar(c);
+            line_start = c == '\n';
+        }
+        return out;
+    }
+}
+
+fn roffQuoted(comptime text: []const u8) []const u8 {
+    comptime {
+        var out: []const u8 = "";
+        for (roff(text)) |c| {
+            if (c == '"') {
+                out = out ++ "\\(dq";
+            } else {
+                out = out ++ &[_]u8{c};
+            }
+        }
         return out;
     }
 }
@@ -193,6 +217,14 @@ fn roffChar(comptime c: u8) []const u8 {
     return switch (c) {
         '\\' => "\\e",
         else => &[_]u8{c},
+    };
+}
+
+fn valuePlaceholder(comptime kind: flag_mod.Kind) []const u8 {
+    return switch (kind) {
+        .bool => "",
+        .string => "VALUE",
+        .int => "N",
     };
 }
 
@@ -228,6 +260,33 @@ test "page renders root sections" {
 test "page renders inherited flags for leaf commands" {
     const text = comptime page(test_root, &.{"run"}, .{});
     try std.testing.expect(std.mem.indexOf(u8, text, "\\-\\-verbose") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "\\-\\-count") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "\\-\\-count N") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, ".SH ARGUMENTS") != null);
+}
+
+test "page omits empty optional sections" {
+    const root = cmd_mod.Cmd{ .name = "empty" };
+    const text = comptime page(root, &.{}, .{});
+    try std.testing.expect(std.mem.indexOf(u8, text, ".SH NAME") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, ".SH SYNOPSIS") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, ".SH DESCRIPTION") == null);
+    try std.testing.expect(std.mem.indexOf(u8, text, ".SH COMMANDS") == null);
+    try std.testing.expect(std.mem.indexOf(u8, text, ".SH OPTIONS") == null);
+    try std.testing.expect(std.mem.indexOf(u8, text, ".SH ARGUMENTS") == null);
+}
+
+test "roff escapes text that could become syntax" {
+    const root = cmd_mod.Cmd{
+        .name = "escape",
+        .desc = ".starts with macro\n'and control\nhas \\ slash",
+        .flags = &.{
+            .{ .long = "--dry-run", .desc = ".flag macro", .kind = .bool },
+        },
+    };
+    const text = comptime page(root, &.{}, .{ .title = "escape \"quoted\"" });
+    try std.testing.expect(std.mem.indexOf(u8, text, "escape \\(dqquoted\\(dq") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "\\&.starts with macro") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "\n\\&'and control") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "\\e slash") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "\\-\\-dry\\-run") != null);
 }

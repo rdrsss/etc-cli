@@ -36,6 +36,7 @@ run_case integration_tests/compile_fail/empty_example_command.zig "command 'tool
 run_case integration_tests/compile_fail/duplicate_example_title.zig "duplicate doc example title 'Run target'"
 run_case integration_tests/compile_fail/empty_doc_note.zig "command 'tool' has empty doc note"
 run_case integration_tests/compile_fail/empty_doc_see_also.zig "command 'tool' has empty see_also entry"
+run_case integration_tests/compile_fail/empty_completion_values.zig "completion kind .values with no values"
 run_case integration_tests/compile_fail/bad_handler_arity.zig "handler must take exactly one parameter"
 run_case integration_tests/compile_fail/bad_handler_param.zig "handler parameter must be"
 run_case integration_tests/compile_fail/bad_handler_return.zig "handler must return"

@@ -121,6 +121,18 @@ chain.
 Completion scripts are generated at comptime for bash, zsh, and fish. Command
 and flag descriptions are escaped for zsh and fish completion output so common
 description text containing quotes or colons remains valid shell syntax.
+Flags and positionals can also declare static value completions:
+
+```zig
+.{ .long = "--mode", .completion = cli.Completion.valueChoices(&.{ "json", "text" }) }
+.{ .long = "--input", .completion = cli.Completion.files }
+.{ .name = "target", .completion = cli.Completion.valueChoices(&.{ "alpha", "beta" }) }
+```
+
+Static value choices are embedded directly into generated bash, zsh, and fish
+scripts. File and directory completions use each shell's native file completion
+behavior where possible. Runtime/dynamic completion callbacks are explicitly
+deferred; use static metadata or application-owned completion commands for now.
 
 ## Man Pages
 

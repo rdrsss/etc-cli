@@ -38,6 +38,7 @@ pub const Flag = struct {
     default: ?Default = null,
     required: bool = false,
     env: ?[]const u8 = null,
+    completion: meta_mod.Completion = .{},
 };
 
 /// A positional argument spec. Positionals are consumed in declaration order
@@ -48,6 +49,7 @@ pub const Positional = struct {
     desc: []const u8 = "",
     kind: Kind = .string,
     required: bool = true,
+    completion: meta_mod.Completion = .{},
 };
 
 /// Comptime: the field type for a given Kind. Used to generate args structs.

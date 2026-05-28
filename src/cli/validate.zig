@@ -71,6 +71,7 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
         validateLongFlagName(node.name, f.long);
         validateFlagAliases(node.name, f);
         validateDeprecation("flag", f.long, f.deprecated);
+        validateCompletion("flag", f.long, f.completion);
         if (f.short) |short| validateShortFlagName(node.name, f.long, short);
         if (f.kind == .bool and f.value_name != null) {
             @compileError("cli.validate: flag '" ++ f.long ++ "' is bool and cannot define value_name");
@@ -93,7 +94,10 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
         }
     }
 
-    for (node.positionals) |p| validateFieldName(node.name, "positional", p.name);
+    for (node.positionals) |p| {
+        validateFieldName(node.name, "positional", p.name);
+        validateCompletion("positional", p.name, p.completion);
+    }
     if (node.rest_field) |rest| validateRestFieldName(node.name, rest);
     validateGeneratedFieldNames(node, combined);
 
@@ -184,6 +188,36 @@ fn validateDeprecation(comptime kind: []const u8, comptime name: []const u8, com
         if (d.message.len == 0 and d.replacement == null) {
             @compileError("cli.validate: deprecated " ++ kind ++ " '" ++ name ++ "' must define a message or replacement");
         }
+    }
+}
+
+fn validateCompletion(comptime kind: []const u8, comptime name: []const u8, comptime completion: anytype) void {
+    switch (completion.kind) {
+        .none => {
+            if (completion.values.len != 0) {
+                @compileError("cli.validate: " ++ kind ++ " '" ++ name ++ "' has completion values but kind .none");
+            }
+        },
+        .values => {
+            if (completion.values.len == 0) {
+                @compileError("cli.validate: " ++ kind ++ " '" ++ name ++ "' has completion kind .values with no values");
+            }
+            for (completion.values, 0..) |value, i| {
+                if (value.len == 0) {
+                    @compileError("cli.validate: " ++ kind ++ " '" ++ name ++ "' has empty completion value");
+                }
+                for (completion.values[i + 1 ..]) |other| {
+                    if (std.mem.eql(u8, value, other)) {
+                        @compileError("cli.validate: " ++ kind ++ " '" ++ name ++ "' has duplicate completion value '" ++ value ++ "'");
+                    }
+                }
+            }
+        },
+        .files, .directories => {
+            if (completion.values.len != 0) {
+                @compileError("cli.validate: " ++ kind ++ " '" ++ name ++ "' file completion cannot also define static values");
+            }
+        },
     }
 }
 

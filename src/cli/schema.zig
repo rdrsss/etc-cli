@@ -116,7 +116,8 @@ fn renderFlag(comptime f: flag_mod.Flag, comptime source: []const u8, comptime o
         }
         out = out ++ ",";
         out = out ++ "\"default\":" ++ renderDefault(f.default) ++ ",";
-        out = out ++ "\"description\":" ++ jsonString(if (options.include_docs) f.desc else "");
+        out = out ++ "\"description\":" ++ jsonString(if (options.include_docs) f.desc else "") ++ ",";
+        out = out ++ "\"completion\":" ++ renderCompletion(f.completion);
         if (options.include_env_metadata) {
             out = out ++ ",\"env\":";
             if (f.env) |env| {
@@ -139,7 +140,8 @@ fn renderPositionals(comptime positionals: []const flag_mod.Positional, comptime
             out = out ++ "\"name\":" ++ jsonString(p.name) ++ ",";
             out = out ++ "\"kind\":" ++ jsonString(@tagName(p.kind)) ++ ",";
             out = out ++ "\"required\":" ++ boolText(p.required) ++ ",";
-            out = out ++ "\"description\":" ++ jsonString(if (options.include_docs) p.desc else "");
+            out = out ++ "\"description\":" ++ jsonString(if (options.include_docs) p.desc else "") ++ ",";
+            out = out ++ "\"completion\":" ++ renderCompletion(p.completion);
             out = out ++ "}";
         }
         out = out ++ "]";
@@ -242,6 +244,16 @@ fn renderStringArray(comptime values: []const []const u8) []const u8 {
             out = out ++ jsonString(value);
         }
         out = out ++ "]";
+        return out;
+    }
+}
+
+fn renderCompletion(comptime completion: anytype) []const u8 {
+    comptime {
+        var out: []const u8 = "{";
+        out = out ++ "\"kind\":" ++ jsonString(@tagName(completion.kind)) ++ ",";
+        out = out ++ "\"values\":" ++ renderStringArray(completion.values);
+        out = out ++ "}";
         return out;
     }
 }

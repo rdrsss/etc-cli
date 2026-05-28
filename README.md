@@ -171,13 +171,17 @@ metadata-only env behavior where `Flag.env` is present.
 ## Validation
 
 Call `comptime cli.validate(root);` near each command tree declaration. The
-validator rejects duplicate subcommands, duplicate inherited flags, mismatched
-default kinds, and required flags that also define defaults.
+validator rejects duplicate subcommands, duplicate inherited flags, invalid
+command/flag/positional syntax, generated args field-name collisions,
+mismatched default kinds, empty manual metadata, and required flags that also
+define defaults.
 
 Negative validation behavior is covered by compile-fail fixtures under
 `integration_tests/compile_fail/`. The default `zig build test` step runs those
 fixtures through `scripts/compile_fail.sh` and asserts the expected compile-time
-diagnostics.
+diagnostics, including invalid handler signatures. Typed-args handler signatures
+are intentionally rejected through `cli.handler`; handlers should accept
+`*const anyopaque` and recover typed args with `cli.castArgs`.
 
 ## Tests
 

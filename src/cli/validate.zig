@@ -4,10 +4,12 @@
 //!   - duplicate long-flag names within a command (including inherited)
 //!   - duplicate short-flag chars within a command (including inherited)
 //!   - duplicate sub-command names within a parent
+//!   - invalid command, flag, positional, and rest-field syntax
+//!   - generated args field-name collisions
 //!   - Default tag mismatched against the flag's Kind
 //!   - flag declared `required = true` with a `default` set (contradictory)
 //!   - invalid manual metadata such as bool value names, empty examples, and
-//!     duplicate exit-code entries
+//!     duplicate example titles and exit-code entries
 //!
 //! Call once near the tree declaration:
 //!
@@ -28,6 +30,8 @@ pub fn validate(comptime root: cmd_mod.Cmd) void {
 }
 
 fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.Flag) void {
+    validateCommandName(node.name);
+
     // Duplicate sub-command names.
     for (node.cmds, 0..) |a, i| {
         for (node.cmds[i + 1 ..]) |b| {
@@ -62,8 +66,15 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
 
     // Per-flag invariants.
     for (node.flags) |f| {
+        validateLongFlagName(node.name, f.long);
+        if (f.short) |short| validateShortFlagName(node.name, f.long, short);
         if (f.kind == .bool and f.value_name != null) {
             @compileError("cli.validate: flag '" ++ f.long ++ "' is bool and cannot define value_name");
+        }
+        if (f.value_name) |value_name| {
+            if (value_name.len == 0) {
+                @compileError("cli.validate: flag '" ++ f.long ++ "' has empty value_name");
+            }
         }
         if (f.default) |d| {
             // Default tag must match Kind.
@@ -78,10 +89,21 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
         }
     }
 
+    for (node.positionals) |p| validateFieldName(node.name, "positional", p.name);
+    if (node.rest_field) |rest| validateRestFieldName(node.name, rest);
+    validateGeneratedFieldNames(node, combined);
+
     // Manual documentation invariants.
-    for (node.doc.examples) |example| {
+    for (node.doc.examples, 0..) |example, i| {
         if (example.command.len == 0) {
             @compileError("cli.validate: command '" ++ node.name ++ "' has doc example with empty command");
+        }
+        if (example.title.len > 0) {
+            for (node.doc.examples[i + 1 ..]) |other| {
+                if (std.mem.eql(u8, example.title, other.title)) {
+                    @compileError("cli.validate: command '" ++ node.name ++ "' has duplicate doc example title '" ++ example.title ++ "'");
+                }
+            }
         }
     }
     for (node.doc.exit_codes, 0..) |a, i| {
@@ -94,11 +116,122 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
             }
         }
     }
+    for (node.doc.notes) |note| {
+        if (note.len == 0) {
+            @compileError("cli.validate: command '" ++ node.name ++ "' has empty doc note");
+        }
+    }
+    for (node.doc.see_also) |entry| {
+        if (entry.len == 0) {
+            @compileError("cli.validate: command '" ++ node.name ++ "' has empty see_also entry");
+        }
+    }
 
     // Recurse.
     for (node.cmds) |child| {
         validateNode(child, combined);
     }
+}
+
+fn validateCommandName(comptime name: []const u8) void {
+    if (!isCliToken(name)) {
+        @compileError("cli.validate: invalid command name '" ++ name ++ "'; use alphanumeric characters and hyphens, starting with alphanumeric");
+    }
+}
+
+fn validateLongFlagName(comptime command_name: []const u8, comptime long: []const u8) void {
+    if (!std.mem.startsWith(u8, long, "--") or long.len <= 2 or !isCliToken(long[2..])) {
+        @compileError("cli.validate: invalid long flag '" ++ long ++ "' in command '" ++ command_name ++ "'; use --name with alphanumeric characters and hyphens");
+    }
+}
+
+fn validateShortFlagName(comptime command_name: []const u8, comptime long: []const u8, comptime short: u8) void {
+    if (!isAsciiAlnum(short)) {
+        @compileError("cli.validate: invalid short flag '-" ++ &[_]u8{short} ++ "' for '" ++ long ++ "' in command '" ++ command_name ++ "'; use one alphanumeric character");
+    }
+}
+
+fn validateFieldName(
+    comptime command_name: []const u8,
+    comptime kind: []const u8,
+    comptime name: []const u8,
+) void {
+    if (!isCliToken(name)) {
+        @compileError("cli.validate: invalid " ++ kind ++ " name '" ++ name ++ "' in command '" ++ command_name ++ "'; use alphanumeric characters and hyphens, starting with alphanumeric");
+    }
+}
+
+fn validateRestFieldName(comptime command_name: []const u8, comptime name: []const u8) void {
+    if (!isArgsFieldToken(name)) {
+        @compileError("cli.validate: invalid rest_field name '" ++ name ++ "' in command '" ++ command_name ++ "'; use a generated args field name with alphanumeric characters and underscores");
+    }
+}
+
+fn validateGeneratedFieldNames(comptime node: cmd_mod.Cmd, comptime combined_flags: []const flag.Flag) void {
+    for (combined_flags, 0..) |a, i| {
+        const a_name = comptime flag.flagFieldName(a);
+        for (combined_flags[i + 1 ..]) |b| {
+            const b_name = comptime flag.flagFieldName(b);
+            if (std.mem.eql(u8, a_name, b_name)) {
+                fieldCollision(node.name, a_name);
+            }
+        }
+        for (node.positionals) |p| {
+            const p_name = comptime flag.positionalFieldName(p);
+            if (std.mem.eql(u8, a_name, p_name)) {
+                fieldCollision(node.name, a_name);
+            }
+        }
+        if (node.rest_field) |rest| {
+            if (std.mem.eql(u8, a_name, rest)) {
+                fieldCollision(node.name, a_name);
+            }
+        }
+    }
+
+    for (node.positionals, 0..) |a, i| {
+        const a_name = comptime flag.positionalFieldName(a);
+        for (node.positionals[i + 1 ..]) |b| {
+            const b_name = comptime flag.positionalFieldName(b);
+            if (std.mem.eql(u8, a_name, b_name)) {
+                fieldCollision(node.name, a_name);
+            }
+        }
+        if (node.rest_field) |rest| {
+            if (std.mem.eql(u8, a_name, rest)) {
+                fieldCollision(node.name, a_name);
+            }
+        }
+    }
+}
+
+fn fieldCollision(comptime command_name: []const u8, comptime field_name: []const u8) noreturn {
+    @compileError("cli.validate: generated args field '" ++ field_name ++ "' collides in command '" ++ command_name ++ "'");
+}
+
+fn isCliToken(comptime s: []const u8) bool {
+    if (s.len == 0) return false;
+    if (!isAsciiAlnum(s[0])) return false;
+    if (s[s.len - 1] == '-') return false;
+    for (s[1..]) |c| {
+        if (!isAsciiAlnum(c) and c != '-') return false;
+    }
+    return true;
+}
+
+fn isAsciiAlnum(comptime c: u8) bool {
+    return (c >= 'a' and c <= 'z') or
+        (c >= 'A' and c <= 'Z') or
+        (c >= '0' and c <= '9');
+}
+
+fn isArgsFieldToken(comptime s: []const u8) bool {
+    if (s.len == 0) return false;
+    if (!isAsciiAlnum(s[0])) return false;
+    for (s[1..]) |c| {
+        if (!isAsciiAlnum(c) and c != '_') return false;
+    }
+    return true;
 }
 
 // ---- tests ----
@@ -113,7 +246,21 @@ test "validate accepts a well-formed tree" {
             .{
                 .name = "add",
                 .flags = &.{
-                    .{ .long = "--title", .kind = .string, .required = true },
+                    .{ .long = "--title", .short = 't', .kind = .string, .required = true, .value_name = "TITLE" },
+                },
+                .positionals = &.{
+                    .{ .name = "target-id" },
+                },
+                .rest_field = "tail",
+                .doc = .{
+                    .examples = &.{
+                        .{ .title = "Add target", .command = "tool add --title demo 42" },
+                    },
+                    .exit_codes = &.{
+                        .{ .code = 0, .desc = "Success." },
+                    },
+                    .notes = &.{"Notes are rendered in generated docs."},
+                    .see_also = &.{"tool(1)"},
                 },
             },
         },

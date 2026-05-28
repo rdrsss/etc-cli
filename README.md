@@ -112,6 +112,44 @@ dispatch, or generated argument types.
 parser still does not read environment variables, and generated text says so
 explicitly.
 
+Downstream projects can write generated pages from an opt-in build step. A
+common shape is a tiny generator executable that imports the application's
+command tree, calls `cli.man.page`, and writes files under a caller-provided
+output directory:
+
+```zig
+const gen_man = b.addExecutable(.{
+    .name = "gen-man",
+    .root_source_file = b.path("tools/gen_man.zig"),
+    .target = target,
+    .optimize = optimize,
+});
+gen_man.root_module.addImport("cli", etc_cli_dep.module("cli"));
+
+const run_gen_man = b.addRunArtifact(gen_man);
+run_gen_man.addArg("zig-out/share/man/man1");
+
+const man_step = b.step("man", "Generate man pages");
+man_step.dependOn(&run_gen_man.step);
+```
+
+The generator executable can then write root and subcommand pages:
+
+```zig
+try dir.writeFile(.{
+    .sub_path = "tool.1",
+    .data = comptime cli.man.page(root, &.{}, .{}),
+});
+try dir.writeFile(.{
+    .sub_path = "tool-hello.1",
+    .data = comptime cli.man.page(root, &.{ "hello" }, .{}),
+});
+```
+
+`etc-cli` intentionally returns plain roff text and does not install, compress,
+or write man pages during normal tests. Packaging code should decide the output
+directory, whether to gzip pages, and how to install them into `man1`.
+
 ## Validation
 
 Call `comptime cli.validate(root);` near each command tree declaration. The

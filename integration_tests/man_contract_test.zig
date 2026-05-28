@@ -65,6 +65,16 @@ test "root man page renders conventional sections" {
     try expectContains(text, "\\-\\-verbose");
 }
 
+test "example tree generates root and subcommand pages" {
+    const root_page = comptime cli.man.page(root, &.{}, .{});
+    const subcommand_page = comptime cli.man.page(root, &.{ "group", "run" }, .{});
+
+    try expectContains(root_page, ".TH \"tool\" \"1\"");
+    try expectContains(root_page, ".B group");
+    try expectContains(subcommand_page, ".TH \"tool-group-run\" \"1\"");
+    try expectContains(subcommand_page, ".B tool group run");
+}
+
 test "subcommand man page includes inherited and local flags" {
     const text = comptime cli.man.page(root, &.{ "group", "run" }, .{});
 

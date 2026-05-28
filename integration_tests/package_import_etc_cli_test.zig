@@ -47,4 +47,7 @@ test "consumer can import etc_cli module name and parse a command tree" {
 
     const completion = comptime etc_cli.completion.script(root, .zsh);
     try std.testing.expect(std.mem.indexOf(u8, completion, "#compdef tool") != null);
+
+    const man = comptime etc_cli.man.page(root, &.{"run"}, .{});
+    try std.testing.expect(std.mem.indexOf(u8, man, ".SH NAME") != null);
 }

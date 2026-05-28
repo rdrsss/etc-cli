@@ -85,6 +85,25 @@ Completion scripts are generated at comptime for bash, zsh, and fish. Command
 and flag descriptions are escaped for zsh and fish completion output so common
 description text containing quotes or colons remains valid shell syntax.
 
+## Man Pages
+
+Man pages are generated at comptime from the same command tree:
+
+```zig
+const page = comptime cli.man.page(root, &.{ "hello" }, .{
+    .title = "TOOL-HELLO",
+    .source = "tool 1.0",
+    .manual = "User Commands",
+});
+```
+
+The generator infers command paths, subcommands, inherited flags, local flags,
+flag kinds, defaults, required markers, positionals, `desc`, and `long_desc`
+from `Cmd`, `Flag`, and `Positional` declarations. Human-authored manual
+content that Zig cannot infer from types, such as examples, exit-status
+meanings, see-also references, install filenames, and release/version strings,
+should be supplied explicitly by the application or build code.
+
 ## Validation
 
 Call `comptime cli.validate(root);` near each command tree declaration. The
@@ -106,4 +125,4 @@ zig build test
 
 That command runs source-local unit tests, downstream-style import tests for both
 `cli` and `etc_cli`, parser contract tests, dispatch tests, completion/help
-tests, and compile-fail validation fixtures.
+tests, man-page generation tests, and compile-fail validation fixtures.

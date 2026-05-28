@@ -98,6 +98,18 @@ pub fn build(b: *std.Build) void {
     });
     const run_help_completion_contract_tests = b.addRunArtifact(help_completion_contract_tests);
 
+    const man_contract_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("integration_tests/man_contract_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "cli", .module = cli_mod },
+            },
+        }),
+    });
+    const run_man_contract_tests = b.addRunArtifact(man_contract_tests);
+
     const run_compile_fail_tests = b.addSystemCommand(&.{ "sh", "scripts/compile_fail.sh" });
 
     const test_step = b.step("test", "Run unit and integration tests");
@@ -108,5 +120,6 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_parser_edge_tests.step);
     test_step.dependOn(&run_dispatch_contract_tests.step);
     test_step.dependOn(&run_help_completion_contract_tests.step);
+    test_step.dependOn(&run_man_contract_tests.step);
     test_step.dependOn(&run_compile_fail_tests.step);
 }

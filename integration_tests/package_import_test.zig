@@ -48,4 +48,7 @@ test "consumer can import cli module name and parse a command tree" {
 
     const completion = comptime cli.completion.script(cli_root, .bash);
     try std.testing.expect(std.mem.indexOf(u8, completion, "complete -F _tool tool") != null);
+
+    const man = comptime cli.man.page(cli_root, &.{"run"}, .{});
+    try std.testing.expect(std.mem.indexOf(u8, man, ".SH NAME") != null);
 }

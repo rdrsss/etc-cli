@@ -28,6 +28,9 @@ pub const Flag = struct {
     short: ?u8 = null,
     desc: []const u8 = "",
     kind: Kind = .string,
+    /// Manual/help placeholder for non-bool flag values, such as PATH or
+    /// COUNT. Parsing is still driven only by `kind`.
+    value_name: ?[]const u8 = null,
     default: ?Default = null,
     required: bool = false,
     env: ?[]const u8 = null,

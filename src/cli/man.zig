@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const cmd_mod = @import("cmd.zig");
+const doc_mod = @import("doc.zig");
 const flag_mod = @import("flag.zig");
 
 pub const Options = struct {
@@ -99,9 +100,34 @@ fn renderPage(
             for (flags) |f| out = out ++ renderFlag(f);
         }
 
+        if (hasEnv(flags)) {
+            out = out ++ ".SH ENVIRONMENT\n";
+            for (flags) |f| out = out ++ renderEnv(f);
+        }
+
         if (node.positionals.len > 0) {
             out = out ++ ".SH ARGUMENTS\n";
             for (node.positionals) |p| out = out ++ renderPositional(p);
+        }
+
+        if (node.doc.examples.len > 0) {
+            out = out ++ ".SH EXAMPLES\n";
+            for (node.doc.examples) |example| out = out ++ renderExample(example);
+        }
+
+        if (node.doc.exit_codes.len > 0) {
+            out = out ++ ".SH EXIT STATUS\n";
+            for (node.doc.exit_codes) |exit_code| out = out ++ renderExitCode(exit_code);
+        }
+
+        if (node.doc.notes.len > 0) {
+            out = out ++ ".SH NOTES\n";
+            for (node.doc.notes) |note| out = out ++ ".PP\n" ++ roff(note) ++ "\n";
+        }
+
+        if (node.doc.see_also.len > 0) {
+            out = out ++ ".SH SEE ALSO\n";
+            out = out ++ renderSeeAlso(node.doc.see_also) ++ "\n";
         }
 
         return out;
@@ -124,7 +150,7 @@ fn flagsFor(
 
 fn renderFlag(comptime f: flag_mod.Flag) []const u8 {
     comptime {
-        const value = valuePlaceholder(f.kind);
+        const value = flagValuePlaceholder(f);
         var out: []const u8 = ".TP\n.B " ++ roffOption(f.long);
         if (value.len > 0) out = out ++ " " ++ value;
         if (f.short) |s| {
@@ -150,6 +176,49 @@ fn renderPositional(comptime p: flag_mod.Positional) []const u8 {
         if (p.desc.len > 0) out = out ++ "\n" ++ roff(p.desc);
         out = out ++ "\n";
         return out;
+    }
+}
+
+fn renderEnv(comptime f: flag_mod.Flag) []const u8 {
+    comptime {
+        if (f.env == null) return "";
+        var out: []const u8 = ".TP\n.B " ++ roff(f.env.?) ++ "\n";
+        out = out ++ "Associated with " ++ roffOption(f.long) ++ " metadata. The parser does not read environment variables.\n";
+        return out;
+    }
+}
+
+fn renderExample(comptime example: doc_mod.Example) []const u8 {
+    comptime {
+        var out: []const u8 = "";
+        if (example.title.len > 0) out = out ++ ".SS " ++ roff(example.title) ++ "\n";
+        out = out ++ ".TP\n.B " ++ roff(example.command) ++ "\n";
+        if (example.desc.len > 0) out = out ++ roff(example.desc) ++ "\n";
+        return out;
+    }
+}
+
+fn renderExitCode(comptime exit_code: doc_mod.ExitCode) []const u8 {
+    comptime {
+        return ".TP\n.B " ++ std.fmt.comptimePrint("{d}", .{exit_code.code}) ++ "\n" ++ roff(exit_code.desc) ++ "\n";
+    }
+}
+
+fn renderSeeAlso(comptime see_also: []const []const u8) []const u8 {
+    comptime {
+        var out: []const u8 = "";
+        for (see_also, 0..) |item, idx| {
+            if (idx > 0) out = out ++ ", ";
+            out = out ++ roff(item);
+        }
+        return out;
+    }
+}
+
+fn hasEnv(comptime flags: []const flag_mod.Flag) bool {
+    comptime {
+        for (flags) |f| if (f.env != null) return true;
+        return false;
     }
 }
 
@@ -220,7 +289,11 @@ fn roffChar(comptime c: u8) []const u8 {
     };
 }
 
-fn valuePlaceholder(comptime kind: flag_mod.Kind) []const u8 {
+fn flagValuePlaceholder(comptime f: flag_mod.Flag) []const u8 {
+    return f.value_name orelse fallbackValuePlaceholder(f.kind);
+}
+
+fn fallbackValuePlaceholder(comptime kind: flag_mod.Kind) []const u8 {
     return switch (kind) {
         .bool => "",
         .string => "VALUE",

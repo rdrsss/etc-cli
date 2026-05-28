@@ -43,6 +43,7 @@ const validate_mod = @import("validate.zig");
 const help_mod = @import("help.zig");
 const completion_mod = @import("completion.zig");
 const man_mod = @import("man.zig");
+const doc_mod = @import("doc.zig");
 const parser = @import("parser.zig");
 const err_mod = @import("error.zig");
 const platform = @import("platform/root.zig");
@@ -58,6 +59,9 @@ pub const Flag = flag.Flag;
 pub const Positional = flag.Positional;
 pub const Kind = flag.Kind;
 pub const Default = flag.Default;
+pub const Doc = doc_mod.Doc;
+pub const Example = doc_mod.Example;
+pub const ExitCode = doc_mod.ExitCode;
 pub const Detail = err_mod.Detail;
 pub const Parse = err_mod.Parse;
 
@@ -110,6 +114,7 @@ test {
     _ = help_mod;
     _ = completion_mod;
     _ = man_mod;
+    _ = doc_mod;
     _ = parser;
     _ = err_mod;
     _ = duration;

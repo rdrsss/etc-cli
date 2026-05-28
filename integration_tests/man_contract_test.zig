@@ -21,12 +21,25 @@ const root = cli.Cmd{
                     .desc = "Run leaf",
                     .long_desc = "Leaf long description for the command page.",
                     .flags = &.{
-                        .{ .long = "--name", .desc = "Name value", .kind = .string, .required = true },
+                        .{ .long = "--name", .desc = "Name value", .kind = .string, .value_name = "NAME", .required = true, .env = "TOOL_NAME" },
                         .{ .long = "--count", .short = 'c', .desc = "Count value", .kind = .int, .default = .{ .int = 1 } },
                     },
                     .positionals = &.{
                         .{ .name = "target", .desc = "Target name", .kind = .string },
                         .{ .name = "label", .desc = "Optional label", .kind = .string, .required = false },
+                    },
+                    .doc = .{
+                        .examples = &.{
+                            .{ .title = "Run named target", .command = "tool group run --name demo target", .desc = "Runs the target named demo." },
+                        },
+                        .exit_codes = &.{
+                            .{ .code = 0, .desc = "Command completed successfully." },
+                            .{ .code = 2, .desc = "Command-line input was invalid." },
+                        },
+                        .notes = &.{
+                            "Generated manual metadata does not change parser behavior.",
+                        },
+                        .see_also = &.{ "tool(1)", "tool-group(1)" },
                     },
                 },
             },
@@ -60,13 +73,25 @@ test "subcommand man page includes inherited and local flags" {
     try expectContains(text, "Leaf long description for the command page.");
     try expectContains(text, "\\-\\-verbose");
     try expectContains(text, "\\-\\-mode");
-    try expectContains(text, "\\-\\-name");
+    try expectContains(text, "\\-\\-name NAME");
+    try expectContains(text, "type: string, value: NAME, required");
     try expectContains(text, "\\-\\-count N, \\-c N");
     try expectContains(text, "type: int, value: N, default: 1");
+    try expectContains(text, ".SH ENVIRONMENT");
+    try expectContains(text, ".B TOOL_NAME");
+    try expectContains(text, "Associated with \\-\\-name metadata. The parser does not read environment variables.");
     try expectContains(text, ".SH ARGUMENTS");
     try expectContains(text, ".I target");
     try expectContains(text, ".I label");
     try expectContains(text, "type: string, optional");
+    try expectContains(text, ".SH EXAMPLES");
+    try expectContains(text, ".SS Run named target");
+    try expectContains(text, ".B tool group run --name demo target");
+    try expectContains(text, ".SH EXIT STATUS");
+    try expectContains(text, ".B 2");
+    try expectContains(text, ".SH NOTES");
+    try expectContains(text, ".SH SEE ALSO");
+    try expectContains(text, "tool(1), tool-group(1)");
 }
 
 test "options can set title and manual metadata" {
@@ -86,7 +111,7 @@ test "inherited flags can be omitted" {
 
     try std.testing.expect(std.mem.indexOf(u8, text, "\\-\\-verbose") == null);
     try std.testing.expect(std.mem.indexOf(u8, text, "\\-\\-mode") == null);
-    try expectContains(text, "\\-\\-name");
+    try expectContains(text, "\\-\\-name NAME");
 }
 
 test "empty sections are omitted" {

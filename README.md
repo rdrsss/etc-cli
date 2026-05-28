@@ -99,10 +99,18 @@ const page = comptime cli.man.page(root, &.{ "hello" }, .{
 
 The generator infers command paths, subcommands, inherited flags, local flags,
 flag kinds, defaults, required markers, positionals, `desc`, and `long_desc`
-from `Cmd`, `Flag`, and `Positional` declarations. Human-authored manual
-content that Zig cannot infer from types, such as examples, exit-status
-meanings, see-also references, install filenames, and release/version strings,
-should be supplied explicitly by the application or build code.
+from `Cmd`, `Flag`, and `Positional` declarations. Use `Flag.value_name` when a
+string or integer flag should render a domain-specific placeholder such as
+`PATH` or `COUNT`; otherwise the generator falls back to `VALUE` for strings
+and `N` for integers.
+
+Manual-only content belongs in `Cmd.doc`. Examples, exit statuses, notes, and
+see-also references enrich generated man pages but do not affect parsing,
+dispatch, or generated argument types.
+
+`Flag.env` renders in the man page ENVIRONMENT section as metadata only. The
+parser still does not read environment variables, and generated text says so
+explicitly.
 
 ## Validation
 

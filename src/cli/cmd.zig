@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const flag = @import("flag.zig");
+const doc_mod = @import("doc.zig");
 
 /// One node in the command tree.
 ///
@@ -35,6 +36,9 @@ pub const Cmd = struct {
     long_desc: []const u8 = "",
     flags: []const flag.Flag = &.{},
     positionals: []const flag.Positional = &.{},
+    /// Manual-only metadata used by documentation generators. This does not
+    /// affect parser behavior or generated ArgsType fields.
+    doc: doc_mod.Doc = .{},
     /// When true, parseLeaf ignores unknown `-x` / `--long` tokens for this
     /// leaf command (and consumes one following value token when present).
     allow_unknown_flags: bool = false,

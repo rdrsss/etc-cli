@@ -1,32 +1,24 @@
-//! cli.duration — shared duration-string parser used by every CLI flag
-//! that accepts a human-readable interval (e.g. `--ttl`, `--stale-after`,
-//! `--interval`).
+//! cli.duration — optional duration-string parser for CLI flags that accept
+//! a human-readable interval. Standalone convenience; the core parser does
+//! not depend on it.
 //!
 //! Accepts:
 //!
-//!   * Bare integers (back-compat): "0", "600", "10". Interpreted in the
-//!     caller-supplied unit via `parseAsSeconds` (seconds) or
-//!     `parseAsNanos` (nanoseconds; bare integer is seconds for human
-//!     ergonomics, matching the legacy `--interval` parser).
-//!   * ISO-style suffixed values: `<number><unit>` where unit is one of
-//!     `ns`, `us`, `ms`, `s`, `m`, `h`. Examples: `500ms`, `10m`, `1h`.
+//!   * Bare integers: "0", "600", "10". A bare integer (no unit) is
+//!     interpreted as SECONDS for human ergonomics.
+//!   * Suffixed values: `<number><unit>` where unit is one of `ns`, `us`,
+//!     `ms`, `s`, `m`, `h`. Examples: `500ms`, `10m`, `1h`.
 //!
 //! Returns `error.InvalidValue` on any malformed input (empty, no digits,
-//! unknown unit, mid-string garbage). The caller is responsible for
-//! mapping that to its own CLI error reporting.
-//!
-//! The integer-second back-compat path is REQUIRED — existing scripts and
-//! integration tests pass bare ints to `--ttl 600`, `--stale-after 0`,
-//! etc. Both forms must coexist; the new suffix forms are purely
-//! additive.
+//! unknown unit, mid-string garbage, or a value that overflows `u64`
+//! nanoseconds). The caller maps that to its own CLI error reporting.
 
 const std = @import("std");
 
 /// Parse a duration string and return its nanosecond value.
 ///
-/// A bare integer (no unit suffix) is interpreted as SECONDS — that
-/// matches the legacy `planar-watch --interval` parser semantics so
-/// `--interval 1` continues to mean "one second".
+/// A bare integer (no unit suffix) is interpreted as SECONDS, so a value
+/// like `1` means "one second".
 pub fn parseNanos(text: []const u8) !u64 {
     const split = try splitNumUnit(text);
     return scaleToNanos(split.num, split.unit, .seconds);
@@ -34,27 +26,17 @@ pub fn parseNanos(text: []const u8) !u64 {
 
 /// Parse a duration string and return its value in whole seconds.
 ///
-/// A bare integer (no unit suffix) is interpreted as SECONDS, matching
-/// the legacy `--ttl <int>` / `--stale-after <int>` contract that
-/// existing scripts and tests depend on.
+/// A bare integer (no unit suffix) is interpreted as SECONDS.
 ///
 /// Sub-second inputs (`500ms`, `100us`, `5ns`) round DOWN to the nearest
-/// whole second; values below 1s therefore round to 0. The `--ttl` /
-/// `--stale-after` surface is documented as seconds-granularity so this
-/// truncation is the deliberate contract — operators wanting finer
-/// granularity should be using `--interval`, which routes through
-/// `parseNanos`.
+/// whole second; values below 1s therefore round to 0. Callers wanting
+/// finer granularity should use `parseNanos`.
 pub fn parseSeconds(text: []const u8) !i64 {
     const split = try splitNumUnit(text);
     const ns = try scaleToNanos(split.num, split.unit, .seconds);
     const secs = ns / std.time.ns_per_s;
     return std.math.cast(i64, secs) orelse error.InvalidValue;
 }
-
-/// Backwards-compat alias for the legacy `parseDurationNs` name that
-/// `planar-watch follow.zig` and `ps.zig` import. Kept so the wake-loop
-/// module doesn't need to chase a rename.
-pub const parseDurationNs = parseNanos;
 
 const BareUnit = enum { seconds, nanoseconds };
 
@@ -73,19 +55,27 @@ fn splitNumUnit(text: []const u8) !Split {
 }
 
 fn scaleToNanos(num: u64, unit: []const u8, bare: BareUnit) !u64 {
+    // Overflowing the u64 nanosecond range is malformed input, not a value to
+    // silently clamp to maxInt — map it to the module's InvalidValue contract.
     if (unit.len == 0) {
         return switch (bare) {
-            .seconds => num *| std.time.ns_per_s,
+            .seconds => mulChecked(num, std.time.ns_per_s),
             .nanoseconds => num,
         };
     }
     if (std.mem.eql(u8, unit, "ns")) return num;
-    if (std.mem.eql(u8, unit, "us")) return num *| std.time.ns_per_us;
-    if (std.mem.eql(u8, unit, "ms")) return num *| std.time.ns_per_ms;
-    if (std.mem.eql(u8, unit, "s")) return num *| std.time.ns_per_s;
-    if (std.mem.eql(u8, unit, "m")) return num *| std.time.ns_per_min;
-    if (std.mem.eql(u8, unit, "h")) return num *| std.time.ns_per_hour;
+    if (std.mem.eql(u8, unit, "us")) return mulChecked(num, std.time.ns_per_us);
+    if (std.mem.eql(u8, unit, "ms")) return mulChecked(num, std.time.ns_per_ms);
+    if (std.mem.eql(u8, unit, "s")) return mulChecked(num, std.time.ns_per_s);
+    if (std.mem.eql(u8, unit, "m")) return mulChecked(num, std.time.ns_per_min);
+    if (std.mem.eql(u8, unit, "h")) return mulChecked(num, std.time.ns_per_hour);
     return error.InvalidValue;
+}
+
+fn mulChecked(a: u64, b: u64) !u64 {
+    const product, const overflow = @mulWithOverflow(a, b);
+    if (overflow != 0) return error.InvalidValue;
+    return product;
 }
 
 // ---------------------------------------------------------------------
@@ -143,4 +133,11 @@ test "parseSeconds: malformed input" {
     try std.testing.expectError(error.InvalidValue, parseSeconds("foo"));
     try std.testing.expectError(error.InvalidValue, parseSeconds("5xx"));
     try std.testing.expectError(error.InvalidValue, parseSeconds("10x"));
+}
+
+test "duration: overflow is InvalidValue, not saturation" {
+    // 18446744073709551615h would overflow u64 nanoseconds; the old code
+    // saturated to maxInt(u64), contradicting the InvalidValue contract.
+    try std.testing.expectError(error.InvalidValue, parseNanos("18446744073709551615h"));
+    try std.testing.expectError(error.InvalidValue, parseNanos("99999999999999999999s"));
 }

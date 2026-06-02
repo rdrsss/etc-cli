@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+    branches: [master]
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The default `test` step shells out to scripts/*.sh for compile-fail
+        # and lint gates, so the matrix is POSIX-only. See docs/ci.md.
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.16.0
+
+      # Optional lint tools. The test step skips each gate when its tool is
+      # absent, so these only enrich coverage; they never gate the build.
+      - name: Install optional lint tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y mandoc zsh fish
+
+      - name: Install optional lint tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install mandoc fish
+
+      - name: Build and test
+        run: zig build test --summary all

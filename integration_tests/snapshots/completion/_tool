@@ -1,0 +1,50 @@
+#compdef tool
+# tool zsh completion (auto-generated)
+
+_tool() {
+    local cur prev path i
+    cur="${words[CURRENT]}"
+    prev="${words[CURRENT-1]}"
+    case "$prev" in
+    esac
+
+    path=""
+    for (( i=2; i<CURRENT; i++ )); do
+        case "${words[i]}" in
+            -*) ;;
+            *)
+                if [[ -z "$path" ]]; then
+                    path="${words[i]}"
+                else
+                    path="$path ${words[i]}"
+                fi
+                ;;
+        esac
+    done
+
+    local -a cmds flags values
+    case "$path" in
+        "")
+            cmds=("run:Run target")
+            flags=("--verbose:Verbose output" "-v:Verbose output" "--help:Show help" "-h:Show help")
+            values=()
+            ;;
+        "run")
+            cmds=()
+            flags=("--verbose:Verbose output" "-v:Verbose output" "--name:Target name" "--help:Show help" "-h:Show help")
+            values=()
+            ;;
+    esac
+
+    if [[ "$cur" == -* ]]; then
+        _describe -t flags 'flags' flags
+    else
+        if (( ${#cmds} )); then
+            _describe -t commands 'commands' cmds
+        else
+            _describe -t values 'values' values
+        fi
+    fi
+}
+
+_tool "$@"

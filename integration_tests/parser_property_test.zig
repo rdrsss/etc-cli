@@ -68,3 +68,39 @@ test "duplicate scalar spellings are rejected regardless of syntax" {
         try std.testing.expectEqualStrings("--name", detail.flag.?);
     }
 }
+
+// Generative property: parse is *total* over arbitrary token sequences — it
+// must always return a result or a `Parse` error and never trip undefined
+// behavior, and every error must populate `detail.kind` with a valid kind
+// (so `errorKindName` resolves). Seeded for deterministic, reproducible runs.
+test "parse is total over random token sequences" {
+    const vocab = [_][]const u8{
+        "run",      "--name",     "demo",      "--name=demo", "-ndemo",
+        "--count",  "5",          "--count=9", "-c3",         "-v",
+        "--verbose", "--no-verbose", "--",      "-5",          "--bogus",
+        "alpha",    "beta",       "",          "-",           "x",
+    };
+
+    var prng = std.Random.DefaultPrng.init(0xC0FFEE_1234);
+    const rand = prng.random();
+
+    var iter: usize = 0;
+    while (iter < 4000) : (iter += 1) {
+        var argv_buf: [9][]const u8 = undefined;
+        argv_buf[0] = "tool";
+        const n = 1 + rand.uintLessThan(usize, argv_buf.len - 1);
+        for (argv_buf[1..n]) |*slot| {
+            slot.* = vocab[rand.uintLessThan(usize, vocab.len)];
+        }
+        const argv: []const []const u8 = argv_buf[0..n];
+
+        var detail: cli.Detail = undefined;
+        if (cli.parse(root, argv, &detail)) |_| {
+            // Reaching here without UB/panic is the property.
+        } else |_| {
+            // The parser must have written a valid kind on the error path;
+            // a non-empty name proves the enum value is in range.
+            try std.testing.expect(cli.errorKindName(detail.kind).len > 0);
+        }
+    }
+}

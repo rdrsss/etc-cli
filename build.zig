@@ -230,9 +230,33 @@ pub fn build(b: *std.Build) void {
     });
     const run_parser_property_tests = b.addRunArtifact(parser_property_tests);
 
+    // These gates shell out to scripts that reference repo-relative paths
+    // (src/, integration_tests/). Anchor their working directory to the build
+    // root so `zig build test` works regardless of the invoking cwd.
     const run_compile_fail_tests = b.addSystemCommand(&.{ "sh", "scripts/compile_fail.sh" });
+    run_compile_fail_tests.setCwd(b.path("."));
     const run_mandoc_lint = b.addSystemCommand(&.{ "sh", "scripts/mandoc_lint.sh" });
+    run_mandoc_lint.setCwd(b.path("."));
     const run_completion_lint = b.addSystemCommand(&.{ "sh", "scripts/completion_lint.sh" });
+    run_completion_lint.setCwd(b.path("."));
+
+    // `zig build snapshots-update` regenerates the golden files under
+    // integration_tests/snapshots/ from the shared snapshot_tree.zig.
+    const snapshot_gen = b.addExecutable(.{
+        .name = "etc-cli-snapshot-gen",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("integration_tests/snapshot_gen.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "cli", .module = cli_mod },
+            },
+        }),
+    });
+    const run_snapshot_gen = b.addRunArtifact(snapshot_gen);
+    run_snapshot_gen.setCwd(b.path("."));
+    const snapshots_step = b.step("snapshots-update", "Regenerate golden snapshots from snapshot_tree.zig");
+    snapshots_step.dependOn(&run_snapshot_gen.step);
 
     const test_step = b.step("test", "Run unit and integration tests");
     test_step.dependOn(&run_tests.step);

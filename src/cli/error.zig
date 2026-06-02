@@ -33,12 +33,17 @@ pub const Detail = struct {
     /// The positional name, when applicable.
     positional: ?[]const u8 = null,
     /// The matched-so-far command path (space-separated), useful in
-    /// "unknown subcommand of `planar task ...`" style messages.
+    /// "unknown subcommand of `tool task ...`" style messages.
     cmd_path: ?[]const u8 = null,
     /// Optional nearest known flag or subcommand spelling.
     suggestion: ?[]const u8 = null,
 };
 
+/// A `Detail` plus a stable, machine-readable `kind_name` string. Use this
+/// (via `structured`) when emitting errors as JSON or structured logs so
+/// consumers can branch on `kind_name` rather than a localized message. The
+/// `kind_name` values are part of the public contract (see `docs/release.md`).
+/// Re-exported from the package root as `StructuredError`.
 pub const Structured = struct {
     kind: Parse,
     kind_name: []const u8,
@@ -49,6 +54,9 @@ pub const Structured = struct {
     suggestion: ?[]const u8 = null,
 };
 
+/// Convert a `Detail` into a `Structured` value, attaching the stable
+/// `kind_name`. No allocation; string fields alias the original `Detail`.
+/// Re-exported from the package root as `structuredError`.
 pub fn structured(detail: Detail) Structured {
     return .{
         .kind = detail.kind,
@@ -61,6 +69,10 @@ pub fn structured(detail: Detail) Structured {
     };
 }
 
+/// Stable snake_case name for a `Parse` error kind, suitable for JSON output
+/// and structured logs. These strings are part of the public contract — treat
+/// a rename as a breaking change. Re-exported from the package root as
+/// `errorKindName`.
 pub fn kindName(kind: Parse) []const u8 {
     return switch (kind) {
         Parse.UnknownFlag => "unknown_flag",
@@ -106,12 +118,12 @@ test "format renders unknown flag with context" {
     try format(.{
         .kind = Parse.UnknownFlag,
         .flag = "--bogus",
-        .cmd_path = "planar task",
+        .cmd_path = "tool task",
     }, &stream);
     const out = stream.buffered();
     try std.testing.expect(std.mem.indexOf(u8, out, "unknown flag") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "--bogus") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out, "planar task") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "tool task") != null);
 }
 
 test "structured exposes stable parse error fields" {

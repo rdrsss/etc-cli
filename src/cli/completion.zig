@@ -14,11 +14,11 @@
 //! emits one flat `complete` line per option gated by a path-match helper.
 //!
 //! Limitations (intentional, v1):
-//!   - Flag *values* are not completed (only flag names).
-//!   - Positional arguments are not suggested.
-//!   - Descriptions are emitted verbatim; if a desc contains a colon (zsh)
-//!     or single-quote (fish), the script will misbehave. Avoid those in
-//!     descs for now, or extend the escape helpers below.
+//!   - Flag *values* are completed only from static `completion` metadata,
+//!     not dynamically.
+//!   - Descriptions are escaped per shell (see `zshEscapeDesc` /
+//!     `fishSingleQuote`); static completion values are validated to be
+//!     shell-safe at comptime in `validate.zig`.
 const std = @import("std");
 const cmd_mod = @import("cmd.zig");
 const flag_mod = @import("flag.zig");
@@ -600,6 +600,10 @@ fn zshEscapeDesc(comptime s: []const u8) []const u8 {
                 '\\' => out ++ "\\\\",
                 '"' => out ++ "\\\"",
                 ':' => out ++ "\\:",
+                // Description prose is free-form; inside the zsh double-quoted
+                // completion entries, `$` and backtick would otherwise expand.
+                '$' => out ++ "\\$",
+                '`' => out ++ "\\`",
                 else => out ++ &[_]u8{c},
             };
         }

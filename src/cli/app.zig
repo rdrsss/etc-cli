@@ -19,6 +19,13 @@ pub const Options = struct {
     version: ?[]const u8 = null,
     about: ?[]const u8 = null,
     exit_codes: ExitCodes = .{},
+    /// Optional hook invoked when a handler returns an error. It receives the
+    /// error and the stderr writer and returns an exit code, or null to fall
+    /// back to `exit_codes.handler_error`. When this hook is null the runner
+    /// writes a concise `error: <name>` line to stderr. Use it to format
+    /// handler errors, suppress the default line (when a handler already
+    /// printed its own message), or map specific errors to exit codes.
+    on_handler_error: ?*const fn (err: anyerror, stderr: *std.Io.Writer) anyerror!?u8 = null,
 };
 
 pub fn run(comptime root: cmd_mod.Cmd, options: Options) anyerror!u8 {
@@ -46,8 +53,15 @@ pub fn run(comptime root: cmd_mod.Cmd, options: Options) anyerror!u8 {
 
 fn maybeBuiltin(comptime root: cmd_mod.Cmd, options: Options) !?u8 {
     if (options.argv.len != 2) return null;
+    const arg = options.argv[1];
 
-    if (std.mem.eql(u8, options.argv[1], "--version") or std.mem.eql(u8, options.argv[1], "version")) {
+    // `--version`/`--about` are conventional and always honored. The bare
+    // words `version`/`about` are only intercepted when the tree does not
+    // declare a real subcommand by that name, so a user's `version` command
+    // is never silently shadowed by the runner.
+    const want_version = std.mem.eql(u8, arg, "--version") or
+        (std.mem.eql(u8, arg, "version") and comptime !hasSubcommand(root, "version"));
+    if (want_version) {
         if (options.version) |version| {
             try options.stdout.print("{s}\n", .{version});
             try options.stdout.flush();
@@ -55,7 +69,9 @@ fn maybeBuiltin(comptime root: cmd_mod.Cmd, options: Options) !?u8 {
         }
     }
 
-    if (std.mem.eql(u8, options.argv[1], "--about") or std.mem.eql(u8, options.argv[1], "about")) {
+    const want_about = std.mem.eql(u8, arg, "--about") or
+        (std.mem.eql(u8, arg, "about") and comptime !hasSubcommand(root, "about"));
+    if (want_about) {
         if (options.about) |about| {
             try options.stdout.print("{s}\n", .{about});
             try options.stdout.flush();
@@ -68,6 +84,16 @@ fn maybeBuiltin(comptime root: cmd_mod.Cmd, options: Options) !?u8 {
     }
 
     return null;
+}
+
+fn hasSubcommand(comptime root: cmd_mod.Cmd, comptime name: []const u8) bool {
+    for (root.cmds) |c| {
+        if (std.mem.eql(u8, c.name, name)) return true;
+        for (c.aliases) |alias| {
+            if (std.mem.eql(u8, alias, name)) return true;
+        }
+    }
+    return false;
 }
 
 fn helpForAnyPath(comptime root: cmd_mod.Cmd, runtime_path: []const []const u8) ?[]const u8 {
@@ -102,9 +128,14 @@ fn invokeMatch(
                 const handler_fn: cmd_mod.HandlerFn = @ptrCast(@alignCast(handler_ptr));
                 const args = @field(result_union, tag_name);
                 handler_fn(@ptrCast(&args)) catch |err| {
-                    try options.stderr.print("error: handler failed: {s}\n", .{@errorName(err)});
+                    const code = if (options.on_handler_error) |hook|
+                        try hook(err, options.stderr)
+                    else blk: {
+                        try options.stderr.print("error: {s}\n", .{@errorName(err)});
+                        break :blk null;
+                    };
                     try options.stderr.flush();
-                    return options.exit_codes.handler_error;
+                    return code orelse options.exit_codes.handler_error;
                 };
                 try options.stdout.flush();
                 return options.exit_codes.success;
@@ -116,7 +147,9 @@ fn invokeMatch(
             return options.exit_codes.success;
         }
     }
-    return options.exit_codes.parse_error;
+    // The result union was built from one of `leaves`, so exactly one tag
+    // matches above. Reaching here means the leaf/tag sets drifted apart.
+    unreachable;
 }
 
 fn pathToTag(comptime path: []const []const u8) []const u8 {

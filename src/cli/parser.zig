@@ -29,6 +29,24 @@ const Positional = flag_mod.Positional;
 /// 256 is well past any realistic argv positional count.
 var rest_buf: [256][]const u8 = undefined;
 
+/// Module-static backing buffer for the resolved command path returned in a
+/// `.help` result. Like `rest_buf`, it lives at module scope so the slice
+/// stays valid after `parseImpl` returns — its elements are comptime
+/// command-name literals, so only the array (not the strings) needs the
+/// static home. Single-threaded by construction: each parse consumes its help
+/// path before the next CLI invocation. 256 is well past any realistic tree
+/// depth.
+var help_path_buf: [256][]const u8 = undefined;
+
+/// Copy the resolved path into the module-static buffer and return it as a
+/// `.help` result. Returning a slice into `parseImpl`'s stack-local
+/// `path_buf` would dangle once `parseImpl` returns to its caller.
+fn helpResult(comptime root: Cmd, path: []const []const u8) Result(root) {
+    std.debug.assert(path.len <= help_path_buf.len);
+    for (path, 0..) |seg, idx| help_path_buf[idx] = seg;
+    return .{ .help = help_path_buf[0..path.len] };
+}
+
 /// Outcome of a parse: either a typed `Match` carrying the active leaf's
 /// args, or a `Help` request (when `--help` was seen) carrying the path
 /// whose help should be rendered.
@@ -82,13 +100,6 @@ fn pathToTag(comptime path: []const []const u8) []const u8 {
     }
 }
 
-/// Parse a single error detail bundle. Returned alongside an error code from
-/// `parse`; the caller can render via `err_mod.format`.
-pub const ParseErr = struct {
-    code: err_mod.Parse,
-    detail: err_mod.Detail,
-};
-
 /// Parse argv against the comptime tree.
 ///
 /// Argv layout: argv[0] is the program name (ignored for matching but
@@ -96,8 +107,8 @@ pub const ParseErr = struct {
 /// All argv[1..] entries are matched against subcommands, flags, and
 /// positionals.
 ///
-/// Returns `Result` on success, or a `Parse` error. On error, the caller
-/// must check `last_error` for the detailed bundle.
+/// Returns `Result` on success, or a `Parse` error. On error, `err_out` is
+/// populated with the detailed bundle; render it with `formatError`.
 pub fn parse(
     comptime root: Cmd,
     argv: []const []const u8,
@@ -109,8 +120,8 @@ pub fn parse(
 /// Dispatch mode: parse + invoke the matched leaf's `run` callback.
 /// Returns the leaf's handler error if it errored. `--help` invokes the
 /// help renderer to `writer` and returns successfully. Parse errors are
-/// formatted to `writer` then returned as `error.ParseFailed` so the
-/// caller can decide whether to `std.process.exit(2)`.
+/// formatted (and flushed) to `writer`, then the original `Parse` error is
+/// returned so the caller can decide whether to `std.process.exit(2)`.
 pub fn dispatch(
     comptime root: Cmd,
     argv: []const []const u8,
@@ -119,6 +130,9 @@ pub fn dispatch(
     var detail: err_mod.Detail = undefined;
     const result = parse(root, argv, &detail) catch |e| {
         try err_mod.format(detail, writer);
+        // Flush so buffered writers surface the diagnostic before we return
+        // the error to the caller; mirror app.run's flush-then-report path.
+        writer.flush() catch {};
         return e;
     };
     switch (result) {
@@ -181,6 +195,9 @@ fn invokeMatch(
             }
         }
     }
+    // The result union was built from one of `leaves`, so exactly one tag
+    // matches above. Reaching here means the leaf/tag sets drifted apart.
+    unreachable;
 }
 
 // =========================================================================
@@ -285,9 +302,13 @@ fn parseImpl(
 
     // Pre-scan tail for --help / -h. Help is global; bail early with the
     // resolved subcommand path so the dispatcher renders the right page.
+    // Stop at the `--` terminator: tokens after it are positionals, so
+    // `tool take -- --help` passes `--help` through as a value rather than
+    // requesting help.
     for (tail_buf[0..tail_len]) |t| {
+        if (std.mem.eql(u8, t, "--")) break;
         if (std.mem.eql(u8, t, "--help") or std.mem.eql(u8, t, "-h")) {
-            return .{ .help = path_buf[0..path_len] };
+            return helpResult(root, path_buf[0..path_len]);
         }
     }
 
@@ -319,17 +340,19 @@ fn parseImpl(
     // No leaf matched. Two sub-cases:
     //
     //   1. `current` is a parent verb (has children) AND the user gave
-    //      no extra tokens after it — bare invocation like `planar plan`.
+    //      no extra tokens after it — bare invocation like `tool group`.
     //      Render the parent's help and exit 0, matching Cobra / Go's
     //      convention. Operator decision Q234 (plan 351, 2026-05-26).
     //
     //   2. Otherwise (unrecognized subcommand token, partial-but-typoed
     //      path, etc.) — the existing UnknownSubcommand error stands.
     if (tail_len == 0 and current.cmds.len > 0) {
-        return .{ .help = path_buf[0..path_len] };
+        return helpResult(root, path_buf[0..path_len]);
     }
 
-    const unknown = if (tail_len > 0) tail_buf[0] else if (i < argv.len) argv[i] else null;
+    // `i` has reached `argv.len` by the time the resolution loop exits, so the
+    // only available token to name is the first tail entry (if any).
+    const unknown: ?[]const u8 = if (tail_len > 0) tail_buf[0] else null;
     err_out.* = .{
         .kind = err_mod.Parse.UnknownSubcommand,
         .arg = unknown,
@@ -432,7 +455,17 @@ fn parseLeaf(
             continue;
         }
 
-        if (!seen_double_dash and tok.len >= 2 and tok[0] == '-') {
+        // A dash-prefixed token that is an all-digit negative number (e.g.
+        // `-5`) is treated as a positional when the next positional slot is an
+        // integer. Without this, `-5` falls into the flag branch and fails as
+        // an unknown flag. Flag *values* like `--count -5` are unaffected:
+        // they are consumed by the flag handler before reaching this check.
+        const neg_num_positional = !seen_double_dash and
+            looksLikeNegativeNumber(tok) and
+            pos_filled < positionals.len and
+            positionals[pos_filled].kind == .int;
+
+        if (!seen_double_dash and tok.len >= 2 and tok[0] == '-' and !neg_num_positional) {
             if (tok.len > 2 and tok[0] == '-' and tok[1] != '-') {
                 if (try parseShortExpansion(Args, &args, all_flags, tok, &seen, err_out)) continue;
             }
@@ -788,6 +821,17 @@ fn parseBoolValue(raw: []const u8) ?bool {
     return null;
 }
 
+/// True when `tok` is a dash followed by one or more ASCII digits (`-5`,
+/// `-12`). Used to route bare negative numbers to integer positionals instead
+/// of the flag branch.
+fn looksLikeNegativeNumber(tok: []const u8) bool {
+    if (tok.len < 2 or tok[0] != '-') return false;
+    for (tok[1..]) |c| {
+        if (c < '0' or c > '9') return false;
+    }
+    return true;
+}
+
 fn setFlagValue(
     comptime Args: type,
     args: *Args,
@@ -927,6 +971,70 @@ test "parse: --help under subcommand returns nested help" {
     const argv: []const []const u8 = &.{ "tool", "task", "add", "--help" };
     var detail: err_mod.Detail = undefined;
     const result = try parse(test_root, argv, &detail);
+    switch (result) {
+        .help => |path| {
+            try std.testing.expectEqual(@as(usize, 2), path.len);
+            try std.testing.expectEqualStrings("task", path[0]);
+            try std.testing.expectEqualStrings("add", path[1]);
+        },
+        .match => return error.ExpectedHelp,
+    }
+}
+
+const neg_root = Cmd{
+    .name = "calc",
+    .cmds = &.{
+        .{
+            .name = "add",
+            .positionals = &.{
+                .{ .name = "delta", .kind = .int, .required = true },
+            },
+        },
+    },
+};
+
+test "parse: bare negative-number positional is accepted" {
+    const argv: []const []const u8 = &.{ "calc", "add", "-5" };
+    var detail: err_mod.Detail = undefined;
+    const result = try parse(neg_root, argv, &detail);
+    try std.testing.expectEqual(@as(i64, -5), result.match.add.delta);
+}
+
+test "parse: negative number after -- is still a positional" {
+    const argv: []const []const u8 = &.{ "calc", "add", "--", "-12" };
+    var detail: err_mod.Detail = undefined;
+    const result = try parse(neg_root, argv, &detail);
+    try std.testing.expectEqual(@as(i64, -12), result.match.add.delta);
+}
+
+test "parse: --help after -- is a positional, not a help request" {
+    // test_root's `task add` has an optional string positional `scope`.
+    const argv: []const []const u8 = &.{ "tool", "task", "add", "--title", "x", "--", "--help" };
+    var detail: err_mod.Detail = undefined;
+    const result = try parse(test_root, argv, &detail);
+    switch (result) {
+        .match => |u| {
+            try std.testing.expect(u.task_add.scope != null);
+            try std.testing.expectEqualStrings("--help", u.task_add.scope.?);
+        },
+        .help => return error.UnexpectedHelp,
+    }
+}
+
+// Writes over the stack region a returning `parseImpl` frame would have
+// occupied, so a regression to the old stack-local help path (use-after-
+// return) corrupts the slice and fails the assertions below.
+noinline fn clobberStack() void {
+    var buf: [4096]usize = undefined;
+    for (&buf, 0..) |*slot, idx| slot.* = idx *% 2654435761;
+    std.mem.doNotOptimizeAway(&buf);
+}
+
+test "parse: help path survives stack churn (no use-after-return)" {
+    const argv: []const []const u8 = &.{ "tool", "task", "add", "--help" };
+    var detail: err_mod.Detail = undefined;
+    const result = try parse(test_root, argv, &detail);
+    clobberStack();
     switch (result) {
         .help => |path| {
             try std.testing.expectEqual(@as(usize, 2), path.len);

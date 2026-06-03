@@ -24,8 +24,14 @@ consumers can ignore them.
 
 ## Release Checklist
 
-1. Update `CHANGELOG.md`.
-2. Run `zig build test --summary all`.
-3. Confirm generated snapshot diffs are intentional.
-4. Tag the release.
-5. Push the tag and publish package metadata used by downstream projects.
+1. Bump `.version` in `build.zig.zon` to the release version.
+2. Move the `## [Unreleased]` entries in `CHANGELOG.md` under a new
+   `## [x.y.z] - <date>` heading and refresh the comparison links.
+3. Run `zig build snapshots-update` and confirm any snapshot diffs are
+   intentional.
+4. Run `zig build test --summary all`.
+5. Verify `LICENSE` is present and that the README `## License` section matches.
+6. Confirm a clean checkout containing only the `build.zig.zon` `.paths`
+   entries builds and tests (`zig build test`).
+7. Tag the release (`vX.Y.Z`) and push the tag.
+8. Publish package metadata used by downstream projects.

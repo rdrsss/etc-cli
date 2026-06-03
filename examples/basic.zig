@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 const std = @import("std");
 const cli = @import("cli");
 

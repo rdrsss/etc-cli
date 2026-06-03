@@ -146,6 +146,32 @@ test "runner parse and handler errors use stderr and nonzero exit codes" {
     try expectContains(stderr.buffered(), "IntentionalFailure");
 }
 
+var hook_err_name: []const u8 = "";
+
+fn onHandlerError(err: anyerror, stderr: *std.Io.Writer) anyerror!?u8 {
+    hook_err_name = @errorName(err);
+    try stderr.print("custom: {s}\n", .{@errorName(err)});
+    return 42;
+}
+
+test "runner handler-error hook overrides message and exit code" {
+    hook_err_name = "";
+    var stdout_buf: [1024]u8 = undefined;
+    var stderr_buf: [1024]u8 = undefined;
+    var stdout = std.Io.Writer.fixed(&stdout_buf);
+    var stderr = std.Io.Writer.fixed(&stderr_buf);
+
+    const code = try cli.run(root, .{
+        .argv = &.{ "tool", "fail" },
+        .stdout = &stdout,
+        .stderr = &stderr,
+        .on_handler_error = onHandlerError,
+    });
+    try std.testing.expectEqual(@as(u8, 42), code);
+    try std.testing.expectEqualStrings("IntentionalFailure", hook_err_name);
+    try expectContains(stderr.buffered(), "custom: IntentionalFailure");
+}
+
 fn expectContains(haystack: []const u8, needle: []const u8) !void {
     try std.testing.expect(std.mem.indexOf(u8, haystack, needle) != null);
 }

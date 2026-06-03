@@ -33,10 +33,10 @@ pub fn page(
 ) []const u8 {
     @setEvalBranchQuota(4_000_000);
     if (options.section != 1) {
-        @compileError("cli.man.page: only section 1 is supported for now");
+        @compileError("man.page: only section 1 is supported for now");
     }
     const target = comptime cmd_mod.findCmd(root, path) orelse @compileError(
-        "cli.man.page: no command at path",
+        "man.page: no command at path",
     );
     return comptime renderPage(root, target, path, options);
 }

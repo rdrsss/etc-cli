@@ -38,7 +38,7 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
     for (node.cmds, 0..) |a, i| {
         for (node.cmds[i + 1 ..]) |b| {
             if (commandNamesOverlap(a, b)) |name| {
-                @compileError("cli.validate: duplicate sub-command name or alias '" ++ name ++ "' under '" ++ node.name ++ "'");
+                @compileError("validate: duplicate sub-command name or alias '" ++ name ++ "' under '" ++ node.name ++ "'");
             }
         }
     }
@@ -50,7 +50,7 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
     for (combined, 0..) |a, i| {
         for (combined[i + 1 ..]) |b| {
             if (flagLongNamesOverlap(a, b)) |name| {
-                @compileError("cli.validate: duplicate flag long name or alias '" ++ name ++ "' in '" ++ node.name ++ "' (or inherited)");
+                @compileError("validate: duplicate flag long name or alias '" ++ name ++ "' in '" ++ node.name ++ "' (or inherited)");
             }
         }
     }
@@ -61,7 +61,7 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
         for (combined[i + 1 ..]) |b| {
             if (b.short == null) continue;
             if (a.short.? == b.short.?) {
-                @compileError("cli.validate: duplicate flag short char '-" ++ &[_]u8{a.short.?} ++ "' in '" ++ node.name ++ "' (or inherited)");
+                @compileError("validate: duplicate flag short char '-" ++ &[_]u8{a.short.?} ++ "' in '" ++ node.name ++ "' (or inherited)");
             }
         }
     }
@@ -70,33 +70,43 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
     for (node.flags) |f| {
         validateLongFlagName(node.name, f.long);
         validateFlagAliases(node.name, f);
+        validateReservedFlagName(node.name, f);
         validateDeprecation("flag", f.long, f.deprecated);
         validateCompletion("flag", f.long, f.completion);
         if (f.short) |short| validateShortFlagName(node.name, f.long, short);
         if (f.kind == .bool and f.value_name != null) {
-            @compileError("cli.validate: flag '" ++ f.long ++ "' is bool and cannot define value_name");
+            @compileError("validate: flag '" ++ f.long ++ "' is bool and cannot define value_name");
         }
         if (f.value_name) |value_name| {
             if (value_name.len == 0) {
-                @compileError("cli.validate: flag '" ++ f.long ++ "' has empty value_name");
+                @compileError("validate: flag '" ++ f.long ++ "' has empty value_name");
             }
         }
         if (f.default) |d| {
             // Default tag must match Kind.
             const default_tag: flag.Kind = d;
             if (default_tag != f.kind) {
-                @compileError("cli.validate: flag '" ++ f.long ++ "' has default of kind ." ++ @tagName(default_tag) ++ " but declared kind ." ++ @tagName(f.kind));
+                @compileError("validate: flag '" ++ f.long ++ "' has default of kind ." ++ @tagName(default_tag) ++ " but declared kind ." ++ @tagName(f.kind));
             }
             // Required + default is contradictory (default makes it not-required).
             if (f.required) {
-                @compileError("cli.validate: flag '" ++ f.long ++ "' is required AND has a default; pick one");
+                @compileError("validate: flag '" ++ f.long ++ "' is required AND has a default; pick one");
             }
         }
     }
 
+    var seen_optional_positional = false;
     for (node.positionals) |p| {
         validateFieldName(node.name, "positional", p.name);
         validateCompletion("positional", p.name, p.completion);
+        // A required positional may not follow an optional one: a single
+        // supplied argument fills the earlier (optional) slot, leaving the
+        // later required slot impossible to satisfy positionally.
+        if (!p.required) {
+            seen_optional_positional = true;
+        } else if (seen_optional_positional) {
+            @compileError("validate: required positional '" ++ p.name ++ "' follows an optional positional in command '" ++ node.name ++ "'; required positionals must be declared first");
+        }
     }
     if (node.rest_field) |rest| validateRestFieldName(node.name, rest);
     validateGeneratedFieldNames(node, combined);
@@ -104,34 +114,34 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
     // Manual documentation invariants.
     for (node.doc.examples, 0..) |example, i| {
         if (example.command.len == 0) {
-            @compileError("cli.validate: command '" ++ node.name ++ "' has doc example with empty command");
+            @compileError("validate: command '" ++ node.name ++ "' has doc example with empty command");
         }
         if (example.title.len > 0) {
             for (node.doc.examples[i + 1 ..]) |other| {
                 if (std.mem.eql(u8, example.title, other.title)) {
-                    @compileError("cli.validate: command '" ++ node.name ++ "' has duplicate doc example title '" ++ example.title ++ "'");
+                    @compileError("validate: command '" ++ node.name ++ "' has duplicate doc example title '" ++ example.title ++ "'");
                 }
             }
         }
     }
     for (node.doc.exit_codes, 0..) |a, i| {
         if (a.desc.len == 0) {
-            @compileError("cli.validate: command '" ++ node.name ++ "' has exit code " ++ std.fmt.comptimePrint("{d}", .{a.code}) ++ " with empty description");
+            @compileError("validate: command '" ++ node.name ++ "' has exit code " ++ std.fmt.comptimePrint("{d}", .{a.code}) ++ " with empty description");
         }
         for (node.doc.exit_codes[i + 1 ..]) |b| {
             if (a.code == b.code) {
-                @compileError("cli.validate: command '" ++ node.name ++ "' has duplicate exit code " ++ std.fmt.comptimePrint("{d}", .{a.code}));
+                @compileError("validate: command '" ++ node.name ++ "' has duplicate exit code " ++ std.fmt.comptimePrint("{d}", .{a.code}));
             }
         }
     }
     for (node.doc.notes) |note| {
         if (note.len == 0) {
-            @compileError("cli.validate: command '" ++ node.name ++ "' has empty doc note");
+            @compileError("validate: command '" ++ node.name ++ "' has empty doc note");
         }
     }
     for (node.doc.see_also) |entry| {
         if (entry.len == 0) {
-            @compileError("cli.validate: command '" ++ node.name ++ "' has empty see_also entry");
+            @compileError("validate: command '" ++ node.name ++ "' has empty see_also entry");
         }
     }
     validateStringList(node.name, "file", node.doc.files);
@@ -151,28 +161,28 @@ fn validateStringList(
 ) void {
     for (values) |value| {
         if (value.len == 0) {
-            @compileError("cli.validate: command '" ++ command_name ++ "' has empty doc " ++ label ++ " entry");
+            @compileError("validate: command '" ++ command_name ++ "' has empty doc " ++ label ++ " entry");
         }
     }
 }
 
 fn validateCommandName(comptime name: []const u8) void {
     if (!isCliToken(name)) {
-        @compileError("cli.validate: invalid command name '" ++ name ++ "'; use alphanumeric characters and hyphens, starting with alphanumeric");
+        @compileError("validate: invalid command name '" ++ name ++ "'; use alphanumeric characters and hyphens, starting with alphanumeric");
     }
 }
 
 fn validateCommandAliases(comptime node: cmd_mod.Cmd) void {
     for (node.aliases, 0..) |alias, i| {
         if (!isCliToken(alias)) {
-            @compileError("cli.validate: invalid command alias '" ++ alias ++ "' for command '" ++ node.name ++ "'");
+            @compileError("validate: invalid command alias '" ++ alias ++ "' for command '" ++ node.name ++ "'");
         }
         if (std.mem.eql(u8, node.name, alias)) {
-            @compileError("cli.validate: command alias '" ++ alias ++ "' duplicates canonical command name '" ++ node.name ++ "'");
+            @compileError("validate: command alias '" ++ alias ++ "' duplicates canonical command name '" ++ node.name ++ "'");
         }
         for (node.aliases[i + 1 ..]) |other| {
             if (std.mem.eql(u8, alias, other)) {
-                @compileError("cli.validate: duplicate command alias '" ++ alias ++ "' for command '" ++ node.name ++ "'");
+                @compileError("validate: duplicate command alias '" ++ alias ++ "' for command '" ++ node.name ++ "'");
             }
         }
     }
@@ -180,7 +190,7 @@ fn validateCommandAliases(comptime node: cmd_mod.Cmd) void {
 
 fn validateLongFlagName(comptime command_name: []const u8, comptime long: []const u8) void {
     if (!std.mem.startsWith(u8, long, "--") or long.len <= 2 or !isCliToken(long[2..])) {
-        @compileError("cli.validate: invalid long flag '" ++ long ++ "' in command '" ++ command_name ++ "'; use --name with alphanumeric characters and hyphens");
+        @compileError("validate: invalid long flag '" ++ long ++ "' in command '" ++ command_name ++ "'; use --name with alphanumeric characters and hyphens");
     }
 }
 
@@ -188,11 +198,11 @@ fn validateFlagAliases(comptime command_name: []const u8, comptime f: flag.Flag)
     for (f.aliases, 0..) |alias, i| {
         validateLongFlagName(command_name, alias);
         if (std.mem.eql(u8, f.long, alias)) {
-            @compileError("cli.validate: flag alias '" ++ alias ++ "' duplicates canonical flag name '" ++ f.long ++ "'");
+            @compileError("validate: flag alias '" ++ alias ++ "' duplicates canonical flag name '" ++ f.long ++ "'");
         }
         for (f.aliases[i + 1 ..]) |other| {
             if (std.mem.eql(u8, alias, other)) {
-                @compileError("cli.validate: duplicate flag alias '" ++ alias ++ "' for flag '" ++ f.long ++ "'");
+                @compileError("validate: duplicate flag alias '" ++ alias ++ "' for flag '" ++ f.long ++ "'");
             }
         }
     }
@@ -201,7 +211,7 @@ fn validateFlagAliases(comptime command_name: []const u8, comptime f: flag.Flag)
 fn validateDeprecation(comptime kind: []const u8, comptime name: []const u8, comptime deprecated: anytype) void {
     if (deprecated) |d| {
         if (d.message.len == 0 and d.replacement == null) {
-            @compileError("cli.validate: deprecated " ++ kind ++ " '" ++ name ++ "' must define a message or replacement");
+            @compileError("validate: deprecated " ++ kind ++ " '" ++ name ++ "' must define a message or replacement");
         }
     }
 }
@@ -210,35 +220,65 @@ fn validateCompletion(comptime kind: []const u8, comptime name: []const u8, comp
     switch (completion.kind) {
         .none => {
             if (completion.values.len != 0) {
-                @compileError("cli.validate: " ++ kind ++ " '" ++ name ++ "' has completion values but kind .none");
+                @compileError("validate: " ++ kind ++ " '" ++ name ++ "' has completion values but kind .none");
             }
         },
         .values => {
             if (completion.values.len == 0) {
-                @compileError("cli.validate: " ++ kind ++ " '" ++ name ++ "' has completion kind .values with no values");
+                @compileError("validate: " ++ kind ++ " '" ++ name ++ "' has completion kind .values with no values");
             }
             for (completion.values, 0..) |value, i| {
                 if (value.len == 0) {
-                    @compileError("cli.validate: " ++ kind ++ " '" ++ name ++ "' has empty completion value");
+                    @compileError("validate: " ++ kind ++ " '" ++ name ++ "' has empty completion value");
+                }
+                // Static completion values are emitted into generated bash
+                // (`compgen -W`) and zsh (`_values`) scripts. Reject shell
+                // metacharacters and whitespace so a value cannot inject
+                // command substitution or break the generated word list.
+                // Dynamic/complex values belong in application-owned
+                // completion commands (see README).
+                for (value) |c| {
+                    if (!isSafeCompletionChar(c)) {
+                        @compileError("validate: " ++ kind ++ " '" ++ name ++ "' has completion value '" ++ value ++ "' with an unsafe character; static values must be shell-safe (alphanumerics and - _ . / @ % + , =)");
+                    }
                 }
                 for (completion.values[i + 1 ..]) |other| {
                     if (std.mem.eql(u8, value, other)) {
-                        @compileError("cli.validate: " ++ kind ++ " '" ++ name ++ "' has duplicate completion value '" ++ value ++ "'");
+                        @compileError("validate: " ++ kind ++ " '" ++ name ++ "' has duplicate completion value '" ++ value ++ "'");
                     }
                 }
             }
         },
         .files, .directories => {
             if (completion.values.len != 0) {
-                @compileError("cli.validate: " ++ kind ++ " '" ++ name ++ "' file completion cannot also define static values");
+                @compileError("validate: " ++ kind ++ " '" ++ name ++ "' file completion cannot also define static values");
             }
         },
     }
 }
 
+fn validateReservedFlagName(comptime command_name: []const u8, comptime f: flag.Flag) void {
+    // `--help` and `-h` are intercepted by the parser before flag matching, so
+    // a user-declared flag with those names would compile, render in
+    // help/completion/schema, yet never parse. Reject them at comptime.
+    if (std.mem.eql(u8, f.long, "--help")) {
+        @compileError("validate: flag long name '--help' in command '" ++ command_name ++ "' is reserved by the parser; remove or rename it");
+    }
+    for (f.aliases) |alias| {
+        if (std.mem.eql(u8, alias, "--help")) {
+            @compileError("validate: flag alias '--help' on flag '" ++ f.long ++ "' in command '" ++ command_name ++ "' is reserved by the parser; remove or rename it");
+        }
+    }
+    if (f.short) |short| {
+        if (short == 'h') {
+            @compileError("validate: short flag '-h' on flag '" ++ f.long ++ "' in command '" ++ command_name ++ "' is reserved by the parser; remove or rename it");
+        }
+    }
+}
+
 fn validateShortFlagName(comptime command_name: []const u8, comptime long: []const u8, comptime short: u8) void {
     if (!isAsciiAlnum(short)) {
-        @compileError("cli.validate: invalid short flag '-" ++ &[_]u8{short} ++ "' for '" ++ long ++ "' in command '" ++ command_name ++ "'; use one alphanumeric character");
+        @compileError("validate: invalid short flag '-" ++ &[_]u8{short} ++ "' for '" ++ long ++ "' in command '" ++ command_name ++ "'; use one alphanumeric character");
     }
 }
 
@@ -248,13 +288,13 @@ fn validateFieldName(
     comptime name: []const u8,
 ) void {
     if (!isCliToken(name)) {
-        @compileError("cli.validate: invalid " ++ kind ++ " name '" ++ name ++ "' in command '" ++ command_name ++ "'; use alphanumeric characters and hyphens, starting with alphanumeric");
+        @compileError("validate: invalid " ++ kind ++ " name '" ++ name ++ "' in command '" ++ command_name ++ "'; use alphanumeric characters and hyphens, starting with alphanumeric");
     }
 }
 
 fn validateRestFieldName(comptime command_name: []const u8, comptime name: []const u8) void {
     if (!isArgsFieldToken(name)) {
-        @compileError("cli.validate: invalid rest_field name '" ++ name ++ "' in command '" ++ command_name ++ "'; use a generated args field name with alphanumeric characters and underscores");
+        @compileError("validate: invalid rest_field name '" ++ name ++ "' in command '" ++ command_name ++ "'; use a generated args field name with alphanumeric characters and underscores");
     }
 }
 
@@ -297,7 +337,7 @@ fn validateGeneratedFieldNames(comptime node: cmd_mod.Cmd, comptime combined_fla
 }
 
 fn fieldCollision(comptime command_name: []const u8, comptime field_name: []const u8) noreturn {
-    @compileError("cli.validate: generated args field '" ++ field_name ++ "' collides in command '" ++ command_name ++ "'");
+    @compileError("validate: generated args field '" ++ field_name ++ "' collides in command '" ++ command_name ++ "'");
 }
 
 fn commandNamesOverlap(comptime a: cmd_mod.Cmd, comptime b: cmd_mod.Cmd) ?[]const u8 {
@@ -338,6 +378,14 @@ fn isAsciiAlnum(comptime c: u8) bool {
     return (c >= 'a' and c <= 'z') or
         (c >= 'A' and c <= 'Z') or
         (c >= '0' and c <= '9');
+}
+
+fn isSafeCompletionChar(comptime c: u8) bool {
+    if (isAsciiAlnum(c)) return true;
+    return switch (c) {
+        '-', '_', '.', '/', '@', '%', '+', ',', '=' => true,
+        else => false,
+    };
 }
 
 fn isArgsFieldToken(comptime s: []const u8) bool {

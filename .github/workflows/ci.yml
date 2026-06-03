@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+    branches: [master]
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The default `test` step shells out to scripts/*.sh for compile-fail
+        # and lint gates, so the matrix is POSIX-only. See docs/ci.md.
+        os: [ubuntu-latest, macos-latest]
+    env:
+      ZIG_VERSION: 0.16.0
+    steps:
+      - uses: actions/checkout@v4
+
+      # Download the pinned Zig toolchain directly from the official source.
+      # Avoids third-party setup actions (which lagged the 0.16 arch-os tarball
+      # rename) and the flaky community mirror pool.
+      - name: Set up Zig
+        run: |
+          set -euo pipefail
+          case "${{ runner.os }}-${{ runner.arch }}" in
+            Linux-X64)   ZIG_TARGET=x86_64-linux ;;
+            Linux-ARM64) ZIG_TARGET=aarch64-linux ;;
+            macOS-ARM64) ZIG_TARGET=aarch64-macos ;;
+            macOS-X64)   ZIG_TARGET=x86_64-macos ;;
+            *) echo "unsupported runner: ${{ runner.os }}-${{ runner.arch }}"; exit 1 ;;
+          esac
+          TARBALL="zig-${ZIG_TARGET}-${ZIG_VERSION}.tar.xz"
+          URL="https://ziglang.org/download/${ZIG_VERSION}/${TARBALL}"
+          echo "Downloading $URL"
+          curl -fsSL --retry 3 --retry-delay 5 "$URL" -o zig.tar.xz
+          mkdir -p "$HOME/zig"
+          tar -xJf zig.tar.xz -C "$HOME/zig" --strip-components=1
+          echo "$HOME/zig" >> "$GITHUB_PATH"
+
+      - name: Zig version
+        run: zig version
+
+      # Optional lint tools. The test step skips each gate when its tool is
+      # absent, so these only enrich coverage; they never gate the build.
+      - name: Install optional lint tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y mandoc zsh fish
+
+      - name: Install optional lint tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install mandoc fish
+
+      - name: Build and test
+        run: zig build test --summary all

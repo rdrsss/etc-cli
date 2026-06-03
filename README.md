@@ -1,15 +1,23 @@
 # etc-cli
 
-`etc-cli` is a standalone Zig package for the comptime-driven CLI parser
-extracted from Planar. It is intended to be shared by multiple tools that want
-typed command trees, generated help, shell completion scripts, and a small
-runtime parser with no dependencies beyond Zig `std`.
+`etc-cli` is a standalone Zig package providing a comptime-driven CLI parser.
+It gives tools typed command trees, generated help, shell completion scripts,
+man pages, and machine-readable command schemas, with no dependencies beyond
+Zig `std`.
 
-## Use
+Requires Zig `0.16.x`.
 
-Add this package as a dependency from another Zig project, then import it under
-the local name you want. The package exposes the same root under both `cli`
-and `etc_cli`; `cli` matches Planar's existing module name.
+## Install
+
+Fetch the package into your project's `build.zig.zon` (pin to a released tag):
+
+```sh
+zig fetch --save "git+https://github.com/rdrsss/etc-cli#v0.1.0"
+```
+
+That records the dependency under the name `etc_cli`. Then import it under
+whatever local name you prefer — the package exposes the same root under both
+`cli` (the canonical short name used throughout these docs) and `etc_cli`:
 
 ```zig
 const cli = @import("cli");
@@ -59,6 +67,10 @@ fn handleHello(args_ptr: *const anyopaque) anyerror!void {
     std.debug.print("hello, {s}\n", .{args.name});
 }
 ```
+
+The snippet above is a fragment focused on the command tree. For a complete,
+compilable program — including `pub fn main`, argv acquisition, and dispatch —
+see [`examples/basic.zig`](examples/basic.zig).
 
 For applications that want a standard top-level policy, `cli.run` owns parse
 errors, help output, version/about output, handler-error formatting, and exit
@@ -284,3 +296,14 @@ gate prints a skip message and succeeds. Completion snapshots are linted with
 See `examples/basic.zig` for a complete command tree and app-runner setup. CI
 matrix guidance lives in `docs/ci.md`; release and API-versioning policy lives
 in `docs/release.md`.
+
+## Contributing
+
+Bug reports and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md)
+for the build/test loop and conventions, and [SECURITY.md](SECURITY.md) for
+reporting security-sensitive issues.
+
+## License
+
+`etc-cli` is released under the [MIT License](LICENSE). Copyright (c) 2026
+Manuel A. Rodriguez.

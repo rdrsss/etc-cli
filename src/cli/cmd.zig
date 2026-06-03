@@ -44,7 +44,12 @@ pub const Cmd = struct {
     /// affect parser behavior or generated ArgsType fields.
     doc: doc_mod.Doc = .{},
     /// When true, parseLeaf ignores unknown `-x` / `--long` tokens for this
-    /// leaf command (and consumes one following value token when present).
+    /// leaf command (and consumes one following non-dash token as its value).
+    /// Caveat: that swallow is best-effort and unaware of declared
+    /// positionals, so an unknown flag immediately followed by a positional
+    /// can eat the positional and surface later as a misleading
+    /// `MissingRequiredPositional`. Prefer declaring flags explicitly; reserve
+    /// this for forwarding/legacy passthrough leaves.
     allow_unknown_flags: bool = false,
     /// When true, parseLeaf ignores extra positional tokens beyond the
     /// declared positionals for this leaf command.
@@ -52,8 +57,13 @@ pub const Cmd = struct {
     /// When non-null, extra positional tokens beyond the declared
     /// `positionals` are collected into a synthesized Args field named
     /// `rest_field` (type `[]const []const u8`, default empty slice).
-    /// The slice borrows directly from argv, so the lifetime matches the
-    /// parser's input lifetime (i.e. process argv — valid for the whole run).
+    ///
+    /// The element strings point into argv, but the slice itself is backed by
+    /// a single module-static buffer in the parser. It stays valid until the
+    /// next `parse`/`dispatch`/`run` call, which reuses that buffer. The
+    /// parser is single-threaded by construction: consume (or copy) the rest
+    /// slice before the next CLI invocation, and do not call `parse`
+    /// concurrently.
     ///
     /// Implies `allow_extra_positionals = true`.
     rest_field: ?[]const u8 = null,
@@ -104,22 +114,22 @@ pub fn handler(comptime func: anytype) *const anyopaque {
     const T = @TypeOf(func);
     const info = @typeInfo(T);
     if (info != .@"fn") @compileError(
-        "cli.handler: expected a function, got `" ++ @typeName(T) ++ "`.",
+        "handler: expected a function, got `" ++ @typeName(T) ++ "`.",
     );
     const fn_info = info.@"fn";
 
     if (fn_info.params.len != 1) @compileError(
-        "cli.handler: handler must take exactly one parameter " ++
+        "handler: handler must take exactly one parameter " ++
             "(`*const anyopaque`). Got " ++ std.fmt.comptimePrint("{d}", .{fn_info.params.len}) ++
             " parameters. Recover the typed args via `cli.castArgs(root, path, args_ptr)` " ++
             "inside the body.",
     );
 
     const param_type = fn_info.params[0].type orelse @compileError(
-        "cli.handler: handler parameter must have a concrete type (`*const anyopaque`).",
+        "handler: handler parameter must have a concrete type (`*const anyopaque`).",
     );
     if (param_type != *const anyopaque) @compileError(
-        "cli.handler: handler parameter must be `*const anyopaque`, got `" ++
+        "handler: handler parameter must be `*const anyopaque`, got `" ++
             @typeName(param_type) ++ "`. The opaque-pointer indirection breaks the " ++
             "`root → handler → ArgsType(root) → root` dependency loop. Use " ++
             "`fn handleX(args_ptr: *const anyopaque) anyerror!void` and recover " ++
@@ -127,10 +137,10 @@ pub fn handler(comptime func: anytype) *const anyopaque {
     );
 
     const ret = fn_info.return_type orelse @compileError(
-        "cli.handler: handler must have a return type (`anyerror!void`).",
+        "handler: handler must have a return type (`anyerror!void`).",
     );
     if (ret != anyerror!void) @compileError(
-        "cli.handler: handler must return `anyerror!void`, got `" ++ @typeName(ret) ++ "`.",
+        "handler: handler must return `anyerror!void`, got `" ++ @typeName(ret) ++ "`.",
     );
 
     return @ptrCast(&func);
@@ -138,6 +148,14 @@ pub fn handler(comptime func: anytype) *const anyopaque {
 
 /// Recover the typed args struct from a handler's opaque-pointer arg.
 /// Pass the same `(root, path)` you used in `Cmd.run = cli.handler(...)`.
+///
+/// **Path-drift hazard.** This `(root, path)` is not cross-checked against the
+/// path the dispatcher used to build the args value — they are wired up
+/// independently. A `path` that resolves to a *different* leaf whose
+/// `ArgsType` has a compatible layout will `@ptrCast` to the wrong type with
+/// no diagnostic (undefined behavior). A `path` that does not resolve at all
+/// is caught at comptime by `ArgsType`. Always pass the exact same path you
+/// gave `cli.handler` for this command.
 pub inline fn castArgs(
     comptime root: Cmd,
     comptime path: []const []const u8,
@@ -180,8 +198,8 @@ pub const Leaf = struct {
 };
 
 /// Comptime: gather every node in the tree (leaves AND parents),
-/// excluding the root itself. Used by help dispatch so `planar plan
-/// --help` resolves to the plan-group page, not the root page.
+/// excluding the root itself. Used by help dispatch so `tool group
+/// --help` resolves to the group page, not the root page.
 pub fn allNodes(comptime root: Cmd) []const Leaf {
     comptime {
         var out: []const Leaf = &.{};
@@ -483,21 +501,21 @@ test "handler: castArgs recovers the typed args struct" {
 //           fn f(a: *const anyopaque, b: u8) anyerror!void { _ = a; _ = b; }
 //       }.f;
 //       _ = handler(badArity);
-//       // → "cli.handler: handler must take exactly one parameter …"
+//       // → "handler: handler must take exactly one parameter …"
 //
 //       // Wrong return → our @compileError:
 //       const badReturn = struct {
 //           fn f(args_ptr: *const anyopaque) void { _ = args_ptr; }
 //       }.f;
 //       _ = handler(badReturn);
-//       // → "cli.handler: handler must return `anyerror!void`, got `void`."
+//       // → "handler: handler must return `anyerror!void`, got `void`."
 //
 //       // Wrong param type (no root ref) → our @compileError:
 //       const badParam = struct {
 //           fn f(n: u32) anyerror!void { _ = n; }
 //       }.f;
 //       _ = handler(badParam);
-//       // → "cli.handler: handler parameter must be `*const anyopaque`, got `u32`. …"
+//       // → "handler: handler parameter must be `*const anyopaque`, got `u32`. …"
 //   }
 //
 // The fourth drift mode — typed args via `ArgsType(root, …)` — does NOT

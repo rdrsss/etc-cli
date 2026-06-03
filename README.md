@@ -12,7 +12,7 @@ Requires Zig `0.16.x`.
 Fetch the package into your project's `build.zig.zon` (pin to a released tag):
 
 ```sh
-zig fetch --save "git+https://github.com/rdrsss/etc-cli#v0.1.0"
+zig fetch --save "git+https://github.com/rdrsss/etc-cli#v0.1.1"
 ```
 
 That records the dependency under the name `etc_cli`. Then import it under

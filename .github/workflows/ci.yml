@@ -25,7 +25,7 @@ jobs:
     env:
       ZIG_VERSION: 0.16.0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Download the pinned Zig toolchain directly from the official source.
       # Avoids third-party setup actions (which lagged the 0.16 arch-os tarball

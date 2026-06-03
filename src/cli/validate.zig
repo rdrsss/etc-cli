@@ -25,6 +25,10 @@ const flag = @import("flag.zig");
 
 pub fn validate(comptime root: cmd_mod.Cmd) void {
     comptime {
+        // Field-name derivation and the per-node checks loop over every flag
+        // and positional in the tree; raise the branch quota so large command
+        // trees validate without tripping the default 1000-branch limit.
+        @setEvalBranchQuota(1_000_000);
         validateNode(root, &.{});
     }
 }
@@ -102,6 +106,15 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
         validateCompletion("positional", p.name, p.completion);
         if (p.kind == .choice) {
             @compileError("validate: positional '" ++ p.name ++ "' in command '" ++ node.name ++ "' cannot use kind .choice; choice is supported on flags only");
+        }
+        if (p.default) |d| {
+            const default_tag: flag.Kind = d;
+            if (default_tag != p.kind) {
+                @compileError("validate: positional '" ++ p.name ++ "' in command '" ++ node.name ++ "' has default of kind ." ++ @tagName(default_tag) ++ " but declared kind ." ++ @tagName(p.kind));
+            }
+            if (p.required) {
+                @compileError("validate: positional '" ++ p.name ++ "' in command '" ++ node.name ++ "' is required AND has a default; pick one");
+            }
         }
         // A required positional may not follow an optional one: a single
         // supplied argument fills the earlier (optional) slot, leaving the

@@ -1109,6 +1109,20 @@ test "parse: float flag and positional accept decimals; default applies" {
     try std.testing.expectError(err_mod.Parse.InvalidValue, parse(float_root, &.{ "tool", "scale", "--rate", "abc" }, &detail));
 }
 
+test "parse: positional default applies when the slot is omitted" {
+    const pos_def_root = Cmd{
+        .name = "tool",
+        .cmds = &.{
+            .{ .name = "run", .positionals = &.{
+                .{ .name = "mode", .kind = .string, .required = false, .default = .{ .string = "fast" } },
+            } },
+        },
+    };
+    var detail: err_mod.Detail = undefined;
+    try std.testing.expectEqualStrings("fast", (try parse(pos_def_root, &.{ "tool", "run" }, &detail)).match.run.mode);
+    try std.testing.expectEqualStrings("slow", (try parse(pos_def_root, &.{ "tool", "run", "slow" }, &detail)).match.run.mode);
+}
+
 const dur_path_root = Cmd{
     .name = "tool",
     .cmds = &.{

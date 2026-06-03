@@ -20,6 +20,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     nanoseconds in the schema.
   - `.path` — string-typed filesystem path; auto-completes files and renders a
     `PATH` placeholder.
+- Positional arguments support a `default`, making the slot optional and the
+  generated field non-optional (validated like flag defaults).
+- `cli.man.page` accepts man sections 1–9 (was section 1 only).
+- The `cli.run` runner prints a stderr warning when a deprecated command is
+  invoked (flag-level warnings remain a follow-up).
+
+### Fixed
+
+- `cli.validate` raises its comptime branch quota so large command trees no
+  longer trip the default 1000-branch limit.
 
 ## [0.1.0] - 2026-06-02
 

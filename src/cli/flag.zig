@@ -59,6 +59,9 @@ pub const Positional = struct {
     desc: []const u8 = "",
     kind: Kind = .string,
     required: bool = true,
+    /// Optional default applied when the positional is omitted. Makes the
+    /// generated field non-optional. Contradictory with `required = true`.
+    default: ?Default = null,
     completion: meta_mod.Completion = .{},
 };
 

@@ -46,4 +46,4 @@ run_case integration_tests/compile_fail/choice_default_not_member.zig "default '
 run_case integration_tests/compile_fail/bad_handler_arity.zig "handler must take exactly one parameter"
 run_case integration_tests/compile_fail/bad_handler_param.zig "handler parameter must be"
 run_case integration_tests/compile_fail/bad_handler_return.zig "handler must return"
-run_case integration_tests/compile_fail/invalid_man_section.zig "man.page: only section 1 is supported for now"
+run_case integration_tests/compile_fail/invalid_man_section.zig "man.page: section must be between 1 and 9"

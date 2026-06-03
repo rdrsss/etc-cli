@@ -124,6 +124,12 @@ fn invokeMatch(
     inline for (leaves) |leaf| {
         const tag_name = comptime pathToTag(leaf.path);
         if (std.mem.eql(u8, @tagName(std.meta.activeTag(result_union)), tag_name)) {
+            // Warn (once) when the invoked command itself is deprecated. Flag-
+            // level deprecation warnings are a separate follow-up; `dispatch`
+            // (single-writer callback mode) does not emit these.
+            if (comptime leaf.cmd.deprecated != null) {
+                try emitDeprecation(options.stderr, leaf.cmd.name, leaf.cmd.deprecated.?);
+            }
             if (leaf.cmd.run) |handler_ptr| {
                 const handler_fn: cmd_mod.HandlerFn = @ptrCast(@alignCast(handler_ptr));
                 const args = @field(result_union, tag_name);
@@ -150,6 +156,14 @@ fn invokeMatch(
     // The result union was built from one of `leaves`, so exactly one tag
     // matches above. Reaching here means the leaf/tag sets drifted apart.
     unreachable;
+}
+
+fn emitDeprecation(stderr: *std.Io.Writer, comptime name: []const u8, comptime d: anytype) std.Io.Writer.Error!void {
+    try stderr.print("warning: '{s}' is deprecated", .{name});
+    if (d.replacement) |replacement| try stderr.print("; use {s}", .{replacement});
+    if (d.message.len > 0) try stderr.print("; {s}", .{d.message});
+    try stderr.print("\n", .{});
+    try stderr.flush();
 }
 
 fn pathToTag(comptime path: []const []const u8) []const u8 {

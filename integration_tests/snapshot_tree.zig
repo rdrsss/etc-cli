@@ -24,6 +24,7 @@ pub const root = cli.Cmd{
             },
             .positionals = &.{
                 .{ .name = "target", .desc = "Target id", .kind = .string },
+                .{ .name = "label", .desc = "Optional label", .kind = .string, .required = false, .default = .{ .string = "none" } },
             },
             .doc = .{
                 .examples = &.{.{ .title = "Run", .command = "tool run --name demo alpha", .desc = "Runs alpha." }},

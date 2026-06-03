@@ -114,6 +114,7 @@ fn renderCmd(comptime node: cmd_mod.Cmd, comptime path: []const []const u8, comp
             for (node.positionals) |p| {
                 out = out ++ "  <" ++ p.name ++ ">" ++ padTo(p.name, if (compact(options)) 8 else 14) ++ "(" ++ @tagName(p.kind) ++ ")";
                 if (!p.required) out = out ++ " optional";
+                if (p.default) |d| out = out ++ " default=" ++ renderDefault(d);
                 if (p.desc.len > 0) out = out ++ " — " ++ p.desc;
                 out = out ++ "\n";
             }

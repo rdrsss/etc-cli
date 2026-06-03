@@ -5,6 +5,7 @@ const cmd_mod = @import("cmd.zig");
 const err_mod = @import("error.zig");
 const help_mod = @import("help.zig");
 const parser = @import("parser.zig");
+const completion_mod = @import("completion.zig");
 
 pub const ExitCodes = struct {
     success: u8 = 0,
@@ -42,6 +43,13 @@ pub const Options = struct {
 var env_argv_buf: [512][]const u8 = undefined;
 
 pub fn run(comptime root: cmd_mod.Cmd, options: Options) anyerror!u8 {
+    // Dynamic-completion callback entrypoint, invoked by generated scripts as
+    // `<prog> __complete <flag> <prefix>`.
+    if (options.argv.len >= 2 and std.mem.eql(u8, options.argv[1], "__complete")) {
+        try completion_mod.complete(root, options.argv[2..], options.stdout);
+        return options.exit_codes.success;
+    }
+
     if (try maybeBuiltin(root, options)) |code| return code;
 
     const argv = if (options.env_lookup) |lookup|

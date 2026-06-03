@@ -12,6 +12,8 @@ _tool() {
             _values 'values' "json" "text" "yaml"; return ;;
         --config)
             _files; return ;;
+        --host)
+            compadd -- ${(f)"$("$words[1]" __complete --host "$cur")"}; return ;;
     esac
 
     path=""
@@ -37,7 +39,7 @@ _tool() {
             ;;
         "run")
             cmds=()
-            flags=("--verbose:Verbose output" "-v:Verbose output" "--color:When to colorize output" "--name:Target name" "--format:Output format" "-f:Output format" "--rate:Sampling rate" "--interval:Poll interval" "--config:Config file path" "--tag:Repeatable tag" "--help:Show help" "-h:Show help")
+            flags=("--verbose:Verbose output" "-v:Verbose output" "--color:When to colorize output" "--name:Target name" "--format:Output format" "-f:Output format" "--rate:Sampling rate" "--interval:Poll interval" "--config:Config file path" "--tag:Repeatable tag" "--host:Target host (dynamic)" "--help:Show help" "-h:Show help")
             values=()
             ;;
     esac

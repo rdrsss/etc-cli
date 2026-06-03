@@ -12,6 +12,8 @@ _tool() {
             COMPREPLY=( $(compgen -W "json text yaml" -- "$cur") ); return ;;
         --config)
             COMPREPLY=( $(compgen -f -- "$cur") ); return ;;
+        --host)
+            COMPREPLY=( $(compgen -W "$("${COMP_WORDS[0]}" __complete --host "$cur")" -- "$cur") ); return ;;
     esac
 
     path=""
@@ -36,7 +38,7 @@ _tool() {
             ;;
         "run")
             cmds=""
-            flags="--verbose -v --color --name --format -f --rate --interval --config --tag --help -h"
+            flags="--verbose -v --color --name --format -f --rate --interval --config --tag --host --help -h"
             values=""
             ;;
         *)

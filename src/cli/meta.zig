@@ -5,11 +5,17 @@ pub const Deprecation = struct {
     replacement: ?[]const u8 = null,
 };
 
-pub const CompletionKind = enum { none, values, files, directories };
+pub const CompletionKind = enum { none, values, files, directories, dynamic };
+
+/// Signature for a dynamic completion callback. Receives the current word
+/// prefix and returns candidate completions. Invoked at runtime by
+/// `cli.complete` (reached via the `__complete` builtin in generated scripts).
+pub const CompletionFn = *const fn (prefix: []const u8) []const []const u8;
 
 pub const Completion = struct {
     kind: CompletionKind = .none,
     values: []const []const u8 = &.{},
+    callback: ?CompletionFn = null,
 
     pub fn none() Completion {
         return .{};
@@ -17,6 +23,12 @@ pub const Completion = struct {
 
     pub fn valueChoices(comptime choices: []const []const u8) Completion {
         return .{ .kind = .values, .values = choices };
+    }
+
+    /// Runtime-computed completions. The generated shell scripts invoke the
+    /// program's `__complete` builtin, which calls this callback.
+    pub fn dynamic(callback: CompletionFn) Completion {
+        return .{ .kind = .dynamic, .callback = callback };
     }
 
     pub const files: Completion = .{ .kind = .files };

@@ -105,6 +105,9 @@ pub const helpTextWithOptions = help_mod.helpTextWithOptions;
 // Comptime shell-completion script generation.
 pub const completion = completion_mod;
 pub const Shell = completion_mod.Shell;
+/// Runtime dynamic-completion entrypoint (reached via the `__complete` builtin
+/// in generated scripts; `cli.run` wires this automatically).
+pub const complete = completion_mod.complete;
 
 // Comptime man-page generation.
 pub const man = man_mod;

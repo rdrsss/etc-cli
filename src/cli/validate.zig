@@ -272,6 +272,17 @@ fn validateCompletion(comptime kind: []const u8, comptime name: []const u8, comp
                 @compileError("validate: " ++ kind ++ " '" ++ name ++ "' file completion cannot also define static values");
             }
         },
+        .dynamic => {
+            if (completion.callback == null) {
+                @compileError("validate: " ++ kind ++ " '" ++ name ++ "' has completion kind .dynamic but no callback; use cli.Completion.dynamic(fn)");
+            }
+            if (completion.values.len != 0) {
+                @compileError("validate: " ++ kind ++ " '" ++ name ++ "' dynamic completion cannot also define static values");
+            }
+        },
+    }
+    if (completion.kind != .dynamic and completion.callback != null) {
+        @compileError("validate: " ++ kind ++ " '" ++ name ++ "' sets a completion callback but kind is not .dynamic");
     }
 }
 

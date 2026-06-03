@@ -23,3 +23,6 @@ complete -c tool -n '__fish_tool_path ""' -f -l 'verbose' -s v -d 'Verbose outpu
 complete -c tool -n '__fish_tool_path ""' -f -l 'color' -a 'auto always never' -d 'When to colorize output'
 complete -c tool -n '__fish_tool_path "run"' -f -l 'name' -d 'Target name'
 complete -c tool -n '__fish_tool_path "run"' -f -l 'format' -s f -a 'json text yaml' -d 'Output format'
+complete -c tool -n '__fish_tool_path "run"' -f -l 'rate' -d 'Sampling rate'
+complete -c tool -n '__fish_tool_path "run"' -f -l 'interval' -d 'Poll interval'
+complete -c tool -n '__fish_tool_path "run"' -l 'config' -d 'Config file path'

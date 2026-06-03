@@ -280,8 +280,11 @@ fn renderDefault(comptime default: ?flag_mod.Default) []const u8 {
         if (default == null) return "null";
         return switch (default.?) {
             .bool => |b| boolText(b),
-            .string, .choice => |s| jsonString(s),
+            .string, .choice, .path => |s| jsonString(s),
             .int => |i| std.fmt.comptimePrint("{d}", .{i}),
+            .float => |x| std.fmt.comptimePrint("{d}", .{x}),
+            // Nanoseconds — precise integer for machine consumers.
+            .duration => |ns| std.fmt.comptimePrint("{d}", .{ns}),
         };
     }
 }
@@ -299,6 +302,9 @@ fn fallbackValueName(comptime kind: flag_mod.Kind) []const u8 {
         .bool => "",
         .string => "VALUE",
         .int => "N",
+        .float => "X",
+        .duration => "DURATION",
+        .path => "PATH",
         .choice => "",
     };
 }

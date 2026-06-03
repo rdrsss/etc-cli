@@ -10,6 +10,8 @@ _tool() {
             _values 'values' "auto" "always" "never"; return ;;
         --format)
             _values 'values' "json" "text" "yaml"; return ;;
+        --config)
+            _files; return ;;
     esac
 
     path=""
@@ -35,7 +37,7 @@ _tool() {
             ;;
         "run")
             cmds=()
-            flags=("--verbose:Verbose output" "-v:Verbose output" "--color:When to colorize output" "--name:Target name" "--format:Output format" "-f:Output format" "--help:Show help" "-h:Show help")
+            flags=("--verbose:Verbose output" "-v:Verbose output" "--color:When to colorize output" "--name:Target name" "--format:Output format" "-f:Output format" "--rate:Sampling rate" "--interval:Poll interval" "--config:Config file path" "--help:Show help" "-h:Show help")
             values=()
             ;;
     esac

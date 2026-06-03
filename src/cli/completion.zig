@@ -585,8 +585,10 @@ fn visibleFlag(comptime f: flag_mod.Flag, comptime options: Options) bool {
 /// `choices` (unless it carries an explicit completion), so the author declares
 /// the value set once. Validation guarantees choices are shell-safe.
 fn effectiveCompletion(comptime f: flag_mod.Flag) @TypeOf(f.completion) {
-    if (f.kind == .choice and f.completion.kind == .none) {
-        return .{ .kind = .values, .values = f.choices };
+    if (f.completion.kind == .none) {
+        // Choice flags complete their declared set; path flags complete files.
+        if (f.kind == .choice) return .{ .kind = .values, .values = f.choices };
+        if (f.kind == .path) return .{ .kind = .files };
     }
     return f.completion;
 }

@@ -8,6 +8,7 @@ const std = @import("std");
 const cmd_mod = @import("cmd.zig");
 const doc_mod = @import("doc.zig");
 const flag_mod = @import("flag.zig");
+const duration_mod = @import("duration.zig");
 
 pub const Options = struct {
     section: u8 = 1,
@@ -338,8 +339,10 @@ fn renderDefault(comptime d: flag_mod.Default) []const u8 {
     comptime {
         return switch (d) {
             .bool => |b| if (b) "true" else "false",
-            .string, .choice => |s| "\"" ++ roff(s) ++ "\"",
+            .string, .choice, .path => |s| "\"" ++ roff(s) ++ "\"",
             .int => |i| std.fmt.comptimePrint("{d}", .{i}),
+            .float => |x| std.fmt.comptimePrint("{d}", .{x}),
+            .duration => |ns| roff(duration_mod.formatNanos(ns)),
         };
     }
 }
@@ -424,6 +427,9 @@ fn fallbackValuePlaceholder(comptime kind: flag_mod.Kind) []const u8 {
         .bool => "",
         .string => "VALUE",
         .int => "N",
+        .float => "X",
+        .duration => "DURATION",
+        .path => "PATH",
         .choice => "",
     };
 }

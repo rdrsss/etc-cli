@@ -330,6 +330,9 @@ fn fillFlagField(
                 .bool => d.bool,
                 .string => d.string,
                 .int => d.int,
+                .float => d.float,
+                .duration => d.duration,
+                .path => d.path,
                 .choice => d.choice,
             };
             const wrapped: FieldT = v;

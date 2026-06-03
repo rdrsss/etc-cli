@@ -14,6 +14,7 @@
 const std = @import("std");
 const cmd_mod = @import("cmd.zig");
 const flag_mod = @import("flag.zig");
+const duration_mod = @import("duration.zig");
 
 pub const Options = struct {
     include_hidden: bool = false,
@@ -189,8 +190,10 @@ fn renderDefault(comptime d: flag_mod.Default) []const u8 {
     comptime {
         return switch (d) {
             .bool => |b| if (b) "true" else "false",
-            .string, .choice => |s| "\"" ++ s ++ "\"",
+            .string, .choice, .path => |s| "\"" ++ s ++ "\"",
             .int => |i| std.fmt.comptimePrint("{d}", .{i}),
+            .float => |x| std.fmt.comptimePrint("{d}", .{x}),
+            .duration => |ns| duration_mod.formatNanos(ns),
         };
     }
 }

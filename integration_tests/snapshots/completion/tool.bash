@@ -10,6 +10,8 @@ _tool() {
             COMPREPLY=( $(compgen -W "auto always never" -- "$cur") ); return ;;
         --format)
             COMPREPLY=( $(compgen -W "json text yaml" -- "$cur") ); return ;;
+        --config)
+            COMPREPLY=( $(compgen -f -- "$cur") ); return ;;
     esac
 
     path=""
@@ -34,7 +36,7 @@ _tool() {
             ;;
         "run")
             cmds=""
-            flags="--verbose -v --color --name --format -f --help -h"
+            flags="--verbose -v --color --name --format -f --rate --interval --config --help -h"
             values=""
             ;;
         *)

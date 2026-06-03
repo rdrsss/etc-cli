@@ -18,6 +18,9 @@ pub const root = cli.Cmd{
             .flags = &.{
                 .{ .long = "--name", .kind = .string, .desc = "Target name", .value_name = "NAME" },
                 .{ .long = "--format", .short = 'f', .kind = .choice, .choices = &.{ "json", "text", "yaml" }, .default = .{ .choice = "text" }, .desc = "Output format" },
+                .{ .long = "--rate", .kind = .float, .default = .{ .float = 1.5 }, .desc = "Sampling rate" },
+                .{ .long = "--interval", .kind = .duration, .default = .{ .duration = 600 * 1_000_000_000 }, .desc = "Poll interval" },
+                .{ .long = "--config", .kind = .path, .desc = "Config file path" },
             },
             .positionals = &.{
                 .{ .name = "target", .desc = "Target id", .kind = .string },

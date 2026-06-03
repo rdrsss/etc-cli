@@ -17,6 +17,7 @@ const cmd_mod = @import("cmd.zig");
 const flag_mod = @import("flag.zig");
 const err_mod = @import("error.zig");
 const help_mod = @import("help.zig");
+const duration_mod = @import("duration.zig");
 
 const Cmd = cmd_mod.Cmd;
 const Flag = flag_mod.Flag;
@@ -565,6 +566,21 @@ fn parseLeaf(
                     };
                     setPositionalValue(Args, &args, positionals, pos_filled, .{ .int = v });
                 },
+                .float => {
+                    const v = std.fmt.parseFloat(f64, tok) catch {
+                        err_out.* = .{ .kind = err_mod.Parse.InvalidValue, .positional = p.name, .arg = tok };
+                        return err_mod.Parse.InvalidValue;
+                    };
+                    setPositionalValue(Args, &args, positionals, pos_filled, .{ .float = v });
+                },
+                .path => setPositionalValue(Args, &args, positionals, pos_filled, .{ .path = tok }),
+                .duration => {
+                    const v = duration_mod.parseNanos(tok) catch {
+                        err_out.* = .{ .kind = err_mod.Parse.InvalidValue, .positional = p.name, .arg = tok };
+                        return err_mod.Parse.InvalidValue;
+                    };
+                    setPositionalValue(Args, &args, positionals, pos_filled, .{ .duration = v });
+                },
                 // Positionals never carry `.choice` (validate rejects it).
                 .choice => unreachable,
             }
@@ -829,6 +845,14 @@ fn coerceAndStore(
     switch (f.kind) {
         .bool => unreachable,
         .string => setFlagValue(Args, args, all_flags, idx, .{ .string = raw }),
+        .path => setFlagValue(Args, args, all_flags, idx, .{ .path = raw }),
+        .duration => {
+            const v = duration_mod.parseNanos(raw) catch {
+                err_out.* = .{ .kind = err_mod.Parse.InvalidValue, .flag = f.long, .arg = raw };
+                return err_mod.Parse.InvalidValue;
+            };
+            setFlagValue(Args, args, all_flags, idx, .{ .duration = v });
+        },
         .choice => {
             if (!isChoiceMember(f.choices, raw)) {
                 err_out.* = .{
@@ -847,6 +871,13 @@ fn coerceAndStore(
                 return err_mod.Parse.InvalidValue;
             };
             setFlagValue(Args, args, all_flags, idx, .{ .int = v });
+        },
+        .float => {
+            const v = std.fmt.parseFloat(f64, raw) catch {
+                err_out.* = .{ .kind = err_mod.Parse.InvalidValue, .flag = f.long, .arg = raw };
+                return err_mod.Parse.InvalidValue;
+            };
+            setFlagValue(Args, args, all_flags, idx, .{ .float = v });
         },
     }
 }
@@ -882,6 +913,9 @@ fn setFlagValue(
                 .bool => @field(args, field_name) = runtime_val.bool,
                 .string => @field(args, field_name) = runtime_val.string,
                 .int => @field(args, field_name) = runtime_val.int,
+                .float => @field(args, field_name) = runtime_val.float,
+                .duration => @field(args, field_name) = runtime_val.duration,
+                .path => @field(args, field_name) = runtime_val.path,
                 .choice => @field(args, field_name) = runtime_val.choice,
             }
             return;
@@ -903,6 +937,9 @@ fn setPositionalValue(
                 .bool => @field(args, field_name) = runtime_val.bool,
                 .string => @field(args, field_name) = runtime_val.string,
                 .int => @field(args, field_name) = runtime_val.int,
+                .float => @field(args, field_name) = runtime_val.float,
+                .duration => @field(args, field_name) = runtime_val.duration,
+                .path => @field(args, field_name) = runtime_val.path,
                 .choice => unreachable,
             }
             return;
@@ -1046,6 +1083,52 @@ test "parse: choice flag rejects an undeclared value with a suggestion" {
     try std.testing.expectError(err_mod.Parse.InvalidValue, parse(choice_root, &.{ "tool", "run", "--format", "jsonn" }, &detail));
     try std.testing.expectEqualStrings("jsonn", detail.arg.?);
     try std.testing.expectEqualStrings("json", detail.suggestion.?);
+}
+
+const float_root = Cmd{
+    .name = "tool",
+    .cmds = &.{
+        .{
+            .name = "scale",
+            .flags = &.{
+                .{ .long = "--rate", .kind = .float, .default = .{ .float = 1.0 } },
+            },
+            .positionals = &.{
+                .{ .name = "factor", .kind = .float, .required = false },
+            },
+        },
+    },
+};
+
+test "parse: float flag and positional accept decimals; default applies" {
+    var detail: err_mod.Detail = undefined;
+    const r = try parse(float_root, &.{ "tool", "scale", "--rate", "2.5", "3.5" }, &detail);
+    try std.testing.expectEqual(@as(f64, 2.5), r.match.scale.rate);
+    try std.testing.expectEqual(@as(f64, 3.5), r.match.scale.factor.?);
+    try std.testing.expectEqual(@as(f64, 1.0), (try parse(float_root, &.{ "tool", "scale" }, &detail)).match.scale.rate);
+    try std.testing.expectError(err_mod.Parse.InvalidValue, parse(float_root, &.{ "tool", "scale", "--rate", "abc" }, &detail));
+}
+
+const dur_path_root = Cmd{
+    .name = "tool",
+    .cmds = &.{
+        .{
+            .name = "watch",
+            .flags = &.{
+                .{ .long = "--interval", .kind = .duration, .default = .{ .duration = 600 * std.time.ns_per_s } },
+                .{ .long = "--config", .kind = .path },
+            },
+        },
+    },
+};
+
+test "parse: duration parses units with default; path stores the raw value" {
+    var detail: err_mod.Detail = undefined;
+    const r = try parse(dur_path_root, &.{ "tool", "watch", "--interval", "10m", "--config", "/etc/x.conf" }, &detail);
+    try std.testing.expectEqual(@as(u64, 10 * std.time.ns_per_min), r.match.watch.interval);
+    try std.testing.expectEqualStrings("/etc/x.conf", r.match.watch.config.?);
+    try std.testing.expectEqual(@as(u64, 600 * std.time.ns_per_s), (try parse(dur_path_root, &.{ "tool", "watch" }, &detail)).match.watch.interval);
+    try std.testing.expectError(err_mod.Parse.InvalidValue, parse(dur_path_root, &.{ "tool", "watch", "--interval", "nope" }, &detail));
 }
 
 const neg_root = Cmd{

@@ -131,9 +131,14 @@ bundles:
 Attached short values are accepted for non-bool short flags, for example
 `-nname` and `-c3`. Short bundles are only accepted when every bundled short
 flag is boolean; ambiguous forms fail as unknown flags. Scalar flags still reject
-duplicates. Floats, path/duration kinds, custom validators, flag groups,
-list-valued flags, and positional defaults are deferred API work; use strings
-plus application validation for those cases today.
+duplicates. Custom validators, flag groups, list-valued flags, and positional
+defaults are deferred API work; use strings plus application validation for
+those cases today.
+
+Beyond `.bool`, `.string`, and `.int`, flags and positionals support `.float`
+(`f64`), `.duration` (human strings like `10m`/`500ms`/`1h` parsed to
+nanoseconds), and `.path` (a string that auto-completes files). Flags also
+support `.choice` (see below).
 
 ## Choice Flags
 

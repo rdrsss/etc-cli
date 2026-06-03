@@ -38,6 +38,25 @@ pub fn parseSeconds(text: []const u8) !i64 {
     return std.math.cast(i64, secs) orelse error.InvalidValue;
 }
 
+/// Comptime: render a nanosecond count as the largest unit that divides it
+/// evenly (e.g. `600000000000` → "10m", `1500000000` → "1500ms"). Used to print
+/// `.duration` flag defaults in generated help/man output.
+pub fn formatNanos(comptime ns: u64) []const u8 {
+    if (ns == 0) return "0s";
+    const units = .{
+        .{ "h", std.time.ns_per_hour },
+        .{ "m", std.time.ns_per_min },
+        .{ "s", std.time.ns_per_s },
+        .{ "ms", std.time.ns_per_ms },
+        .{ "us", std.time.ns_per_us },
+        .{ "ns", 1 },
+    };
+    inline for (units) |u| {
+        if (ns % u[1] == 0) return std.fmt.comptimePrint("{d}{s}", .{ ns / u[1], u[0] });
+    }
+    return std.fmt.comptimePrint("{d}ns", .{ns});
+}
+
 const BareUnit = enum { seconds, nanoseconds };
 
 const Split = struct { num: u64, unit: []const u8 };
@@ -133,6 +152,13 @@ test "parseSeconds: malformed input" {
     try std.testing.expectError(error.InvalidValue, parseSeconds("foo"));
     try std.testing.expectError(error.InvalidValue, parseSeconds("5xx"));
     try std.testing.expectError(error.InvalidValue, parseSeconds("10x"));
+}
+
+test "formatNanos picks the largest evenly-dividing unit" {
+    try std.testing.expectEqualStrings("0s", formatNanos(0));
+    try std.testing.expectEqualStrings("1h", formatNanos(std.time.ns_per_hour));
+    try std.testing.expectEqualStrings("10m", formatNanos(10 * std.time.ns_per_min));
+    try std.testing.expectEqualStrings("1500ms", formatNanos(1500 * std.time.ns_per_ms));
 }
 
 test "duration: overflow is InvalidValue, not saturation" {

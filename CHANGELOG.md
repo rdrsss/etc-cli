@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-06-03
+
 ### Added
 
 - New flag/positional value kinds:
@@ -85,5 +87,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Validation and generator diagnostics are name-agnostic (no `cli.` prefix) so
   `etc_cli` importers see matching messages.
 
-[Unreleased]: https://github.com/rdrsss/etc-cli/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/rdrsss/etc-cli/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/rdrsss/etc-cli/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/rdrsss/etc-cli/releases/tag/v0.1.0

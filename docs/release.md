@@ -6,11 +6,16 @@ public module contract predictable and make generated artifact changes explicit.
 ## Versioning
 
 - Use semantic versioning once the first public tag is cut.
-- Bump patch for bug fixes and documentation-only improvements.
-- Bump minor for additive APIs, new metadata fields, new generated artifact
-  options, or broader accepted parser syntax.
-- Bump major for breaking changes to public types, generated `ArgsType` field
-  names, parser semantics, schema shape, artifact naming, or validation rules.
+- **Pre-1.0 (`0.1.x`):** the API is still stabilizing, so additive changes
+  (new kinds, flags, metadata fields, generated-artifact options, broader
+  parser syntax) ship in patch releases. Reserve a `0.y` minor bump for a
+  breaking change; treat the `0.1.x` line as a rolling additive series.
+- Post-1.0, the rules below apply:
+  - Bump patch for bug fixes and documentation-only improvements.
+  - Bump minor for additive APIs, new metadata fields, new generated artifact
+    options, or broader accepted parser syntax.
+  - Bump major for breaking changes to public types, generated `ArgsType` field
+    names, parser semantics, schema shape, artifact naming, or validation rules.
 
 ## API Stability
 

@@ -76,6 +76,7 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
         validateFlagAliases(node.name, f);
         validateReservedFlagName(node.name, f);
         validateChoices(node.name, f);
+        validateList(node.name, f);
         validateDeprecation("flag", f.long, f.deprecated);
         validateCompletion("flag", f.long, f.completion);
         if (f.short) |short| validateShortFlagName(node.name, f.long, short);
@@ -333,6 +334,17 @@ fn validateChoices(comptime command_name: []const u8, comptime f: flag.Flag) voi
         }
     } else if (f.choices.len != 0) {
         @compileError("validate: flag '" ++ f.long ++ "' in command '" ++ command_name ++ "' declares `choices` but kind is not .choice");
+    }
+}
+
+fn validateList(comptime command_name: []const u8, comptime f: flag.Flag) void {
+    if (!f.list) return;
+    switch (f.kind) {
+        .string, .path, .choice => {},
+        else => @compileError("validate: list flag '" ++ f.long ++ "' in command '" ++ command_name ++ "' must be kind .string, .path, or .choice"),
+    }
+    if (f.default != null) {
+        @compileError("validate: list flag '" ++ f.long ++ "' in command '" ++ command_name ++ "' cannot define a default; the empty list is the default");
     }
 }
 

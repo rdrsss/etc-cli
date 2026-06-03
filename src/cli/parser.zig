@@ -30,6 +30,16 @@ const Positional = flag_mod.Positional;
 /// 256 is well past any realistic argv positional count.
 var rest_buf: [256][]const u8 = undefined;
 
+/// Module-static backing store for repeatable (`list`) flag values. Each list
+/// flag in the active leaf gets a row (assigned by its comptime ordinal among
+/// list flags); accumulated values land in that row. Like `rest_buf`, the
+/// returned slices stay valid until the next parse, which resets the counts.
+/// Single-threaded by construction. Caps are generous for real CLIs.
+const max_list_flags = 16;
+const max_list_items = 128;
+var list_buf: [max_list_flags][max_list_items][]const u8 = undefined;
+var list_counts: [max_list_flags]usize = .{0} ** max_list_flags;
+
 /// Module-static backing buffer for the resolved command path returned in a
 /// `.help` result. Like `rest_buf`, it lives at module scope so the slice
 /// stays valid after `parseImpl` returns — its elements are comptime
@@ -429,6 +439,9 @@ fn parseLeaf(
         }
     }
 
+    // Reset the shared list-flag accumulator for this parse.
+    list_counts = .{0} ** max_list_flags;
+
     // Track which flags have been set so we can detect dupes and required
     // misses. Comptime-sized bitset (well, bool array) because the flag
     // count is comptime-known.
@@ -481,7 +494,7 @@ fn parseLeaf(
             if (all_flags.len > 0 and matched_idx != null) {
                 const idx = matched_idx.?;
                 const f = all_flags[idx];
-                if (seen[idx]) {
+                if (!f.list and seen[idx]) {
                     err_out.* = .{ .kind = err_mod.Parse.DuplicateFlag, .flag = f.long };
                     return err_mod.Parse.DuplicateFlag;
                 }
@@ -548,6 +561,12 @@ fn parseLeaf(
                 return err_mod.Parse.TooManyPositionals;
             }
             const p = positionals[pos_filled];
+            if (p.validator) |validate_fn| {
+                if (validate_fn(tok)) |msg| {
+                    err_out.* = .{ .kind = err_mod.Parse.InvalidValue, .positional = p.name, .arg = tok, .message = msg };
+                    return err_mod.Parse.InvalidValue;
+                }
+            }
             switch (p.kind) {
                 .bool => {
                     // Accept "true"/"false" for bool positionals; rare but
@@ -675,7 +694,7 @@ fn parseShortExpansion(
     if (first_flag.kind != .bool) {
         const raw = tok[2..];
         if (raw.len == 0) return false;
-        if (seen[first_idx]) {
+        if (!first_flag.list and seen[first_idx]) {
             err_out.* = .{ .kind = err_mod.Parse.DuplicateFlag, .flag = first_flag.long };
             return err_mod.Parse.DuplicateFlag;
         }
@@ -842,6 +861,26 @@ fn coerceAndStore(
     raw: []const u8,
     err_out: *err_mod.Detail,
 ) err_mod.Parse!void {
+    if (f.validator) |validate_fn| {
+        if (validate_fn(raw)) |msg| {
+            err_out.* = .{ .kind = err_mod.Parse.InvalidValue, .flag = f.long, .arg = raw, .message = msg };
+            return err_mod.Parse.InvalidValue;
+        }
+    }
+    if (f.list) {
+        // List elements are []const u8 (string/path/choice). Choice lists still
+        // enforce membership per item.
+        if (f.kind == .choice and !isChoiceMember(f.choices, raw)) {
+            err_out.* = .{
+                .kind = err_mod.Parse.InvalidValue,
+                .flag = f.long,
+                .arg = raw,
+                .suggestion = nearestChoice(f.choices, raw),
+            };
+            return err_mod.Parse.InvalidValue;
+        }
+        return appendListValue(Args, args, all_flags, idx, raw, err_out);
+    }
     switch (f.kind) {
         .bool => unreachable,
         .string => setFlagValue(Args, args, all_flags, idx, .{ .string = raw }),
@@ -882,6 +921,44 @@ fn coerceAndStore(
     }
 }
 
+/// Append a value to a repeatable flag's row in the module-static `list_buf`
+/// and point the field slice at the accumulated values.
+fn appendListValue(
+    comptime Args: type,
+    args: *Args,
+    comptime all_flags: []const Flag,
+    idx: usize,
+    raw: []const u8,
+    err_out: *err_mod.Detail,
+) err_mod.Parse!void {
+    // Only list flags have a `[]const []const u8` field; gate the body on
+    // `lf.list` so the inline-for doesn't type-check this assignment against
+    // non-list flags (whose fields are bool/[]const u8/…).
+    inline for (all_flags, 0..) |lf, i| {
+        if (comptime lf.list) {
+            if (i == idx) {
+                const row = comptime blk: {
+                    var r: usize = 0;
+                    for (all_flags[0..i]) |g| {
+                        if (g.list) r += 1;
+                    }
+                    break :blk r;
+                };
+                if (row >= max_list_flags) @compileError("parser: a command exceeds the list-flag limit");
+                if (list_counts[row] >= max_list_items) {
+                    err_out.* = .{ .kind = err_mod.Parse.UnexpectedArgument, .flag = lf.long, .arg = raw };
+                    return err_mod.Parse.UnexpectedArgument;
+                }
+                list_buf[row][list_counts[row]] = raw;
+                list_counts[row] += 1;
+                const field_name = comptime flag_mod.flagFieldName(lf);
+                @field(args, field_name) = list_buf[row][0..list_counts[row]];
+                return;
+            }
+        }
+    }
+}
+
 fn isChoiceMember(choices: []const []const u8, raw: []const u8) bool {
     for (choices) |c| {
         if (std.mem.eql(u8, c, raw)) return true;
@@ -907,18 +984,22 @@ fn setFlagValue(
     // `inline for` unrolls into a switch on idx so each branch sees a
     // comptime field name AND a comptime-narrowed value type.
     inline for (all_flags, 0..) |f, i| {
-        if (i == idx) {
-            const field_name = comptime flag_mod.flagFieldName(f);
-            switch (f.kind) {
-                .bool => @field(args, field_name) = runtime_val.bool,
-                .string => @field(args, field_name) = runtime_val.string,
-                .int => @field(args, field_name) = runtime_val.int,
-                .float => @field(args, field_name) = runtime_val.float,
-                .duration => @field(args, field_name) = runtime_val.duration,
-                .path => @field(args, field_name) = runtime_val.path,
-                .choice => @field(args, field_name) = runtime_val.choice,
+        // List flags store via appendListValue; skip them so this scalar
+        // assignment isn't type-checked against their slice field.
+        if (comptime !f.list) {
+            if (i == idx) {
+                const field_name = comptime flag_mod.flagFieldName(f);
+                switch (f.kind) {
+                    .bool => @field(args, field_name) = runtime_val.bool,
+                    .string => @field(args, field_name) = runtime_val.string,
+                    .int => @field(args, field_name) = runtime_val.int,
+                    .float => @field(args, field_name) = runtime_val.float,
+                    .duration => @field(args, field_name) = runtime_val.duration,
+                    .path => @field(args, field_name) = runtime_val.path,
+                    .choice => @field(args, field_name) = runtime_val.choice,
+                }
+                return;
             }
-            return;
         }
     }
 }
@@ -1083,6 +1164,52 @@ test "parse: choice flag rejects an undeclared value with a suggestion" {
     try std.testing.expectError(err_mod.Parse.InvalidValue, parse(choice_root, &.{ "tool", "run", "--format", "jsonn" }, &detail));
     try std.testing.expectEqualStrings("jsonn", detail.arg.?);
     try std.testing.expectEqualStrings("json", detail.suggestion.?);
+}
+
+const list_root = Cmd{
+    .name = "tool",
+    .cmds = &.{
+        .{ .name = "build", .flags = &.{
+            .{ .long = "--tag", .kind = .string, .list = true },
+            .{ .long = "--mode", .kind = .choice, .choices = &.{ "fast", "slow" }, .list = true },
+        } },
+    },
+};
+
+test "parse: list flag accumulates repeats and defaults to empty" {
+    var detail: err_mod.Detail = undefined;
+    const r = try parse(list_root, &.{ "tool", "build", "--tag", "a", "--tag", "b", "--mode", "fast" }, &detail);
+    try std.testing.expectEqual(@as(usize, 2), r.match.build.tag.len);
+    try std.testing.expectEqualStrings("a", r.match.build.tag[0]);
+    try std.testing.expectEqualStrings("b", r.match.build.tag[1]);
+    try std.testing.expectEqual(@as(usize, 1), r.match.build.mode.len);
+    try std.testing.expectEqualStrings("fast", r.match.build.mode[0]);
+
+    const empty = try parse(list_root, &.{ "tool", "build" }, &detail);
+    try std.testing.expectEqual(@as(usize, 0), empty.match.build.tag.len);
+
+    // A choice list still enforces membership per item.
+    try std.testing.expectError(err_mod.Parse.InvalidValue, parse(list_root, &.{ "tool", "build", "--mode", "nope" }, &detail));
+}
+
+fn validatePort(v: []const u8) ?[]const u8 {
+    const n = std.fmt.parseInt(u32, v, 10) catch return "must be a number";
+    if (n > 65535) return "port out of range";
+    return null;
+}
+
+const validator_root = Cmd{
+    .name = "tool",
+    .cmds = &.{
+        .{ .name = "serve", .flags = &.{ .{ .long = "--port", .kind = .int, .validator = validatePort } } },
+    },
+};
+
+test "parse: custom validator accepts valid input and rejects with a message" {
+    var detail: err_mod.Detail = undefined;
+    try std.testing.expectEqual(@as(i64, 8080), (try parse(validator_root, &.{ "tool", "serve", "--port", "8080" }, &detail)).match.serve.port);
+    try std.testing.expectError(err_mod.Parse.InvalidValue, parse(validator_root, &.{ "tool", "serve", "--port", "99999" }, &detail));
+    try std.testing.expectEqualStrings("port out of range", detail.message.?);
 }
 
 const float_root = Cmd{

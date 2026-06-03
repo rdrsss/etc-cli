@@ -240,6 +240,7 @@ fn renderFlag(comptime f: flag_mod.Flag) []const u8 {
         }
         out = out ++ "\n";
         out = out ++ "type: " ++ @tagName(f.kind);
+        if (f.list) out = out ++ ", repeatable";
         if (value.len > 0) out = out ++ ", value: " ++ value;
         if (f.required) out = out ++ ", required";
         if (f.default) |d| out = out ++ ", default: " ++ renderDefault(d);
@@ -266,7 +267,7 @@ fn renderEnv(comptime f: flag_mod.Flag) []const u8 {
     comptime {
         if (f.env == null) return "";
         var out: []const u8 = ".TP\n.B " ++ roff(f.env.?) ++ "\n";
-        out = out ++ "Associated with " ++ roffOption(f.long) ++ " metadata. The parser does not read environment variables.\n";
+        out = out ++ "Fallback source for " ++ roffOption(f.long) ++ " when invoked through the cli.run runner (global non-bool flags). The low-level parse/dispatch APIs do not read the environment.\n";
         return out;
     }
 }

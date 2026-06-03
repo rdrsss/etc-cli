@@ -115,6 +115,7 @@ fn renderFlag(comptime f: flag_mod.Flag, comptime source: []const u8, comptime o
         out = out ++ ",";
         out = out ++ "\"kind\":" ++ jsonString(@tagName(f.kind)) ++ ",";
         out = out ++ "\"choices\":" ++ renderStringArray(f.choices) ++ ",";
+        out = out ++ "\"list\":" ++ boolText(f.list) ++ ",";
         out = out ++ "\"required\":" ++ boolText(f.required) ++ ",";
         out = out ++ "\"source\":" ++ jsonString(source) ++ ",";
         out = out ++ "\"valueName\":";

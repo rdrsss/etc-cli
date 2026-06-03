@@ -38,6 +38,10 @@ pub const Flag = struct {
     deprecated: ?meta_mod.Deprecation = null,
     desc: []const u8 = "",
     kind: Kind = .string,
+    /// When true the flag may repeat (`--tag a --tag b`) and its generated
+    /// field is `[]const []const u8` (default empty). v1 supports list elements
+    /// of kind `.string`, `.path`, or `.choice`. A list flag takes no `default`.
+    list: bool = false,
     /// Manual/help placeholder for non-bool flag values, such as PATH or
     /// COUNT. Parsing is still driven only by `kind`.
     value_name: ?[]const u8 = null,
@@ -48,6 +52,10 @@ pub const Flag = struct {
     default: ?Default = null,
     required: bool = false,
     env: ?[]const u8 = null,
+    /// Optional value validator run after kind coercion. Receives the raw
+    /// argument string; return `null` to accept, or an error-message string to
+    /// reject (surfaced as `InvalidValue` with that message).
+    validator: ?*const fn ([]const u8) ?[]const u8 = null,
     completion: meta_mod.Completion = .{},
 };
 
@@ -62,6 +70,8 @@ pub const Positional = struct {
     /// Optional default applied when the positional is omitted. Makes the
     /// generated field non-optional. Contradictory with `required = true`.
     default: ?Default = null,
+    /// Optional value validator; see `Flag.validator`.
+    validator: ?*const fn ([]const u8) ?[]const u8 = null,
     completion: meta_mod.Completion = .{},
 };
 

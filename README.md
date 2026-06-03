@@ -159,12 +159,28 @@ in man pages, and as a `"choices"` array in the command schema.
 
 ## Environment Metadata
 
-`Flag.env` is currently reserved metadata. The parser does not read environment
-variables, and an `env` setting does not satisfy a required flag. Consumers
-should pass environment-derived defaults explicitly until env fallback behavior
-is added as a deliberate feature. Precedence is therefore `argv`, then declared
-defaults, then required-flag errors; `env` is not in the parse-time precedence
-chain.
+The low-level `parse`/`dispatch` APIs never read the environment. The `cli.run`
+runner, however, applies `Flag.env` as a fallback when you pass an `env_lookup`
+function:
+
+```zig
+const code = try cli.run(root, .{
+    .argv = argv,
+    .stdout = stdout,
+    .stderr = stderr,
+    .env_lookup = struct {
+        fn lookup(name: []const u8) ?[]const u8 {
+            return std.posix.getenv(name);
+        }
+    }.lookup,
+});
+```
+
+For each global (root) non-bool flag with `.env` set and absent from argv, the
+runner fills the value from the environment before parsing, so precedence is
+`argv` > env > declared default > required-flag error. Leaf-specific and bool
+env flags are not yet covered by the fallback; for those, pass
+environment-derived values explicitly.
 
 ## Completion Scripts
 

@@ -149,6 +149,7 @@ fn renderPositionals(comptime positionals: []const flag_mod.Positional, comptime
             out = out ++ "\"name\":" ++ jsonString(p.name) ++ ",";
             out = out ++ "\"kind\":" ++ jsonString(@tagName(p.kind)) ++ ",";
             out = out ++ "\"required\":" ++ boolText(p.required) ++ ",";
+            out = out ++ "\"default\":" ++ renderDefault(p.default) ++ ",";
             out = out ++ "\"description\":" ++ jsonString(if (options.include_docs) p.desc else "") ++ ",";
             out = out ++ "\"completion\":" ++ renderCompletion(p.completion);
             out = out ++ "}";

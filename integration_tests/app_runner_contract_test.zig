@@ -25,6 +25,11 @@ const root = cli.Cmd{
             .name = "help-only",
             .desc = "No handler help",
         },
+        .{
+            .name = "legacy",
+            .desc = "Legacy command",
+            .deprecated = .{ .message = "use run instead", .replacement = "run" },
+        },
     },
 };
 
@@ -170,6 +175,22 @@ test "runner handler-error hook overrides message and exit code" {
     try std.testing.expectEqual(@as(u8, 42), code);
     try std.testing.expectEqualStrings("IntentionalFailure", hook_err_name);
     try expectContains(stderr.buffered(), "custom: IntentionalFailure");
+}
+
+test "runner warns on stderr when a deprecated command is invoked" {
+    var stdout_buf: [4096]u8 = undefined;
+    var stderr_buf: [1024]u8 = undefined;
+    var stdout = std.Io.Writer.fixed(&stdout_buf);
+    var stderr = std.Io.Writer.fixed(&stderr_buf);
+
+    const code = try cli.run(root, .{
+        .argv = &.{ "tool", "legacy" },
+        .stdout = &stdout,
+        .stderr = &stderr,
+    });
+    try std.testing.expectEqual(@as(u8, 0), code);
+    try expectContains(stderr.buffered(), "'legacy' is deprecated");
+    try expectContains(stderr.buffered(), "use run");
 }
 
 fn expectContains(haystack: []const u8, needle: []const u8) !void {

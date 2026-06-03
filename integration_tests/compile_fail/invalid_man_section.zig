@@ -5,5 +5,5 @@ const root = cli.Cmd{
 };
 
 comptime {
-    _ = cli.man.page(root, &.{}, .{ .section = 2 });
+    _ = cli.man.page(root, &.{}, .{ .section = 10 });
 }

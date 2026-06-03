@@ -354,8 +354,21 @@ fn fillPositionalField(
     attrs_out: *std.builtin.Type.StructField.Attributes,
 ) void {
     const T = flag.ValueType(p.kind);
-    const FieldT = if (p.required) T else ?T;
+    const FieldT = if (p.required or p.default != null) T else ?T;
     const default_value: ?*const anyopaque = blk: {
+        if (p.default) |d| {
+            const v: T = switch (p.kind) {
+                .bool => d.bool,
+                .string => d.string,
+                .int => d.int,
+                .float => d.float,
+                .duration => d.duration,
+                .path => d.path,
+                .choice => unreachable, // positionals reject .choice in validate
+            };
+            const wrapped: FieldT = v;
+            break :blk @ptrCast(&wrapped);
+        }
         if (p.required) break :blk null;
         const null_val: FieldT = null;
         break :blk @ptrCast(&null_val);

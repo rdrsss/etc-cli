@@ -33,8 +33,8 @@ pub fn page(
     comptime options: Options,
 ) []const u8 {
     @setEvalBranchQuota(4_000_000);
-    if (options.section != 1) {
-        @compileError("man.page: only section 1 is supported for now");
+    if (options.section < 1 or options.section > 9) {
+        @compileError("man.page: section must be between 1 and 9");
     }
     const target = comptime cmd_mod.findCmd(root, path) orelse @compileError(
         "man.page: no command at path",
@@ -255,6 +255,7 @@ fn renderPositional(comptime p: flag_mod.Positional) []const u8 {
         var out: []const u8 = ".TP\n.I " ++ roff(p.name) ++ "\n";
         out = out ++ "type: " ++ @tagName(p.kind);
         if (!p.required) out = out ++ ", optional";
+        if (p.default) |d| out = out ++ ", default: " ++ renderDefault(d);
         if (p.desc.len > 0) out = out ++ "\n" ++ roff(p.desc);
         out = out ++ "\n";
         return out;
@@ -468,6 +469,11 @@ test "page renders inherited flags for leaf commands" {
     try std.testing.expect(std.mem.indexOf(u8, text, "\\-\\-verbose") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, "\\-\\-count N") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, ".SH ARGUMENTS") != null);
+}
+
+test "page accepts sections other than 1" {
+    const text = comptime page(test_root, &.{}, .{ .section = 8 });
+    try std.testing.expect(std.mem.indexOf(u8, text, ".TH \"tool\" \"8\"") != null);
 }
 
 test "page omits empty optional sections" {

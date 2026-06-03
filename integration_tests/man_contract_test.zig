@@ -97,7 +97,7 @@ test "subcommand man page includes inherited and local flags" {
     try expectContains(text, "type: int, value: N, default: 1");
     try expectContains(text, ".SH ENVIRONMENT");
     try expectContains(text, ".B TOOL_NAME");
-    try expectContains(text, "Associated with \\-\\-name metadata. The parser does not read environment variables.");
+    try expectContains(text, "Fallback source for \\-\\-name when invoked through the cli.run runner");
     try expectContains(text, ".SH ARGUMENTS");
     try expectContains(text, ".I target");
     try expectContains(text, ".I label");

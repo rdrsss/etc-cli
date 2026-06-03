@@ -37,6 +37,8 @@ pub const Detail = struct {
     cmd_path: ?[]const u8 = null,
     /// Optional nearest known flag or subcommand spelling.
     suggestion: ?[]const u8 = null,
+    /// Optional custom message from a value validator.
+    message: ?[]const u8 = null,
 };
 
 /// A `Detail` plus a stable, machine-readable `kind_name` string. Use this
@@ -52,6 +54,7 @@ pub const Structured = struct {
     positional: ?[]const u8 = null,
     cmd_path: ?[]const u8 = null,
     suggestion: ?[]const u8 = null,
+    message: ?[]const u8 = null,
 };
 
 /// Convert a `Detail` into a `Structured` value, attaching the stable
@@ -66,6 +69,7 @@ pub fn structured(detail: Detail) Structured {
         .positional = detail.positional,
         .cmd_path = detail.cmd_path,
         .suggestion = detail.suggestion,
+        .message = detail.message,
     };
 }
 
@@ -102,6 +106,7 @@ pub fn format(detail: Detail, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         Parse.UnexpectedArgument => try writer.print("unexpected argument", .{}),
         Parse.DuplicateFlag => try writer.print("flag specified more than once", .{}),
     }
+    if (detail.message) |m| try writer.print(" ({s})", .{m});
     if (detail.flag) |f| try writer.print(": {s}", .{f});
     if (detail.positional) |p| try writer.print(": <{s}>", .{p});
     if (detail.arg) |a| try writer.print(" (got {s})", .{a});

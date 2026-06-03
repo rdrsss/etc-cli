@@ -26,3 +26,4 @@ complete -c tool -n '__fish_tool_path "run"' -f -l 'format' -s f -a 'json text y
 complete -c tool -n '__fish_tool_path "run"' -f -l 'rate' -d 'Sampling rate'
 complete -c tool -n '__fish_tool_path "run"' -f -l 'interval' -d 'Poll interval'
 complete -c tool -n '__fish_tool_path "run"' -l 'config' -d 'Config file path'
+complete -c tool -n '__fish_tool_path "run"' -f -l 'tag' -d 'Repeatable tag'

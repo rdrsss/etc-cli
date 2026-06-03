@@ -3,10 +3,14 @@ const cli = @import("cli");
 
 var handler_called = false;
 var handler_name: []const u8 = "";
+var handler_token: []const u8 = "";
 
 const root = cli.Cmd{
     .name = "tool",
     .desc = "Runner fixture",
+    .flags = &.{
+        .{ .long = "--token", .kind = .string, .env = "TOOL_TOKEN" },
+    },
     .cmds = &.{
         .{
             .name = "run",
@@ -46,6 +50,29 @@ fn handleRun(args_ptr: *const anyopaque) anyerror!void {
     const args = cli.castArgs(root, &.{"run"}, args_ptr);
     handler_called = true;
     handler_name = args.name;
+    handler_token = args.token orelse "";
+}
+
+fn fakeEnv(name: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, name, "TOOL_TOKEN")) return "envtoken";
+    return null;
+}
+
+test "runner fills a global flag from env when absent and lets argv win when present" {
+    var so: [1024]u8 = undefined;
+    var se: [1024]u8 = undefined;
+
+    handler_token = "";
+    var stdout = std.Io.Writer.fixed(&so);
+    var stderr = std.Io.Writer.fixed(&se);
+    _ = try cli.run(root, .{ .argv = &.{ "tool", "run", "--name", "x" }, .stdout = &stdout, .stderr = &stderr, .env_lookup = fakeEnv });
+    try std.testing.expectEqualStrings("envtoken", handler_token);
+
+    handler_token = "";
+    stdout = std.Io.Writer.fixed(&so);
+    stderr = std.Io.Writer.fixed(&se);
+    _ = try cli.run(root, .{ .argv = &.{ "tool", "run", "--name", "x", "--token", "cli" }, .stdout = &stdout, .stderr = &stderr, .env_lookup = fakeEnv });
+    try std.testing.expectEqualStrings("cli", handler_token);
 }
 
 fn handleFail(_: *const anyopaque) anyerror!void {

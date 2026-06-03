@@ -138,6 +138,7 @@ fn renderFlagLine(comptime f: flag_mod.Flag, comptime options: Options) []const 
         var out: []const u8 = f.long;
         if (f.short) |s| out = out ++ ", -" ++ &[_]u8{s};
         out = out ++ padTo(out, if (compact(options)) 16 else 22) ++ "(" ++ flagKindLabel(f) ++ ")";
+        if (f.list) out = out ++ " (repeatable)";
         if (f.required) out = out ++ " required";
         if (f.default) |d| out = out ++ " default=" ++ renderDefault(d);
         if (f.desc.len > 0) {

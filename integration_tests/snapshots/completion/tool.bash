@@ -36,7 +36,7 @@ _tool() {
             ;;
         "run")
             cmds=""
-            flags="--verbose -v --color --name --format -f --rate --interval --config --help -h"
+            flags="--verbose -v --color --name --format -f --rate --interval --config --tag --help -h"
             values=""
             ;;
         *)

@@ -21,6 +21,7 @@ pub const root = cli.Cmd{
                 .{ .long = "--rate", .kind = .float, .default = .{ .float = 1.5 }, .desc = "Sampling rate" },
                 .{ .long = "--interval", .kind = .duration, .default = .{ .duration = 600 * 1_000_000_000 }, .desc = "Poll interval" },
                 .{ .long = "--config", .kind = .path, .desc = "Config file path" },
+                .{ .long = "--tag", .kind = .string, .list = true, .desc = "Repeatable tag" },
             },
             .positionals = &.{
                 .{ .name = "target", .desc = "Target id", .kind = .string },

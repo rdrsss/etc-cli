@@ -41,7 +41,7 @@ test "generated surfaces describe env as metadata only" {
     const man = comptime cli.man.page(root, &.{"env"}, .{});
     try expectContains(man, ".SH ENVIRONMENT");
     try expectContains(man, "TOOL_TOKEN");
-    try expectContains(man, "The parser does not read environment variables.");
+    try expectContains(man, "do not read the environment");
 
     const schema = comptime cli.schema.json(root, .{});
     try expectContains(schema, "\"env\":\"TOOL_TOKEN\"");

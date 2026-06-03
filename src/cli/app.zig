@@ -26,13 +26,31 @@ pub const Options = struct {
     /// handler errors, suppress the default line (when a handler already
     /// printed its own message), or map specific errors to exit codes.
     on_handler_error: ?*const fn (err: anyerror, stderr: *std.Io.Writer) anyerror!?u8 = null,
+    /// Optional environment lookup for `Flag.env` fallback. Given a variable
+    /// name, return its value or null. When set, the runner fills any global
+    /// (root) non-bool flag that has `.env` set and is absent from argv with
+    /// its environment value before parsing — so precedence is argv > env >
+    /// default > required-error. Leaf-specific and bool env flags are not yet
+    /// covered. The parser/dispatch APIs remain env-unaware. Returned values
+    /// must outlive the call (e.g. slices into the process environment).
+    env_lookup: ?*const fn (name: []const u8) ?[]const u8 = null,
 };
+
+/// Module-static backing store for the env-augmented argv. Like the parser's
+/// buffers, the returned slice stays valid until the next `run`; single-
+/// threaded by construction.
+var env_argv_buf: [512][]const u8 = undefined;
 
 pub fn run(comptime root: cmd_mod.Cmd, options: Options) anyerror!u8 {
     if (try maybeBuiltin(root, options)) |code| return code;
 
+    const argv = if (options.env_lookup) |lookup|
+        augmentWithEnv(root, options.argv, lookup)
+    else
+        options.argv;
+
     var detail: err_mod.Detail = undefined;
-    const result = parser.parse(root, options.argv, &detail) catch {
+    const result = parser.parse(root, argv, &detail) catch {
         try err_mod.format(detail, options.stderr);
         try options.stderr.flush();
         return options.exit_codes.parse_error;
@@ -49,6 +67,53 @@ pub fn run(comptime root: cmd_mod.Cmd, options: Options) anyerror!u8 {
             return invokeMatch(root, u, options);
         },
     }
+}
+
+/// Build an argv with environment fallbacks for global (root) non-bool flags
+/// injected after argv[0] (before subcommands, so `--` passthrough is
+/// unaffected). Only flags absent from argv whose env var resolves are added.
+fn augmentWithEnv(
+    comptime root: cmd_mod.Cmd,
+    argv: []const []const u8,
+    lookup: *const fn (name: []const u8) ?[]const u8,
+) []const []const u8 {
+    if (argv.len == 0) return argv;
+    env_argv_buf[0] = argv[0];
+    var n: usize = 1;
+    inline for (root.flags) |f| {
+        if (comptime f.env != null and f.kind != .bool and !f.list) {
+            if (!argvHasFlag(argv, f)) {
+                if (lookup(f.env.?)) |value| {
+                    if (n + 2 <= env_argv_buf.len) {
+                        env_argv_buf[n] = f.long;
+                        env_argv_buf[n + 1] = value;
+                        n += 2;
+                    }
+                }
+            }
+        }
+    }
+    for (argv[1..]) |a| {
+        if (n >= env_argv_buf.len) return argv; // overflow: fall back to raw argv
+        env_argv_buf[n] = a;
+        n += 1;
+    }
+    return env_argv_buf[0..n];
+}
+
+fn argvHasFlag(argv: []const []const u8, comptime f: anytype) bool {
+    for (argv) |tok| {
+        if (std.mem.eql(u8, tok, f.long)) return true;
+        if (std.mem.startsWith(u8, tok, f.long) and tok.len > f.long.len and tok[f.long.len] == '=') return true;
+        inline for (f.aliases) |alias| {
+            if (std.mem.eql(u8, tok, alias)) return true;
+            if (std.mem.startsWith(u8, tok, alias) and tok.len > alias.len and tok[alias.len] == '=') return true;
+        }
+        if (f.short) |s| {
+            if (tok.len == 2 and tok[0] == '-' and tok[1] == s) return true;
+        }
+    }
+    return false;
 }
 
 fn maybeBuiltin(comptime root: cmd_mod.Cmd, options: Options) !?u8 {

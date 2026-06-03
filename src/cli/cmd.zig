@@ -322,6 +322,14 @@ fn fillFlagField(
     type_out: *type,
     attrs_out: *std.builtin.Type.StructField.Attributes,
 ) void {
+    if (f.list) {
+        // Repeatable flag: field is a slice of values, default empty.
+        const empty_slice: []const []const u8 = &.{};
+        name_out.* = flag.flagFieldName(f);
+        type_out.* = []const []const u8;
+        attrs_out.* = .{ .default_value_ptr = @ptrCast(&empty_slice) };
+        return;
+    }
     const T = flag.ValueType(f.kind);
     const FieldT = if (f.required or f.default != null) T else ?T;
     const default_value: ?*const anyopaque = blk: {

@@ -25,6 +25,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `cli.man.page` accepts man sections 1–9 (was section 1 only).
 - The `cli.run` runner prints a stderr warning when a deprecated command is
   invoked (flag-level warnings remain a follow-up).
+- Custom value validators: `Flag.validator`/`Positional.validator`
+  (`fn([]const u8) ?[]const u8`) run after kind coercion and surface a custom
+  message via `InvalidValue` (new `Detail.message`).
+- Repeatable (list) flags: `Flag.list = true` accumulates `--tag a --tag b` into
+  a `[]const []const u8` field (string/path/choice elements; choice membership
+  enforced per item). Renders as repeatable in help/man and `"list"` in schema.
+- Environment fallback in the `cli.run` runner via `Options.env_lookup`: global
+  non-bool `.env` flags absent from argv are filled from the environment
+  (precedence argv > env > default > required). `parse`/`dispatch` stay
+  env-unaware.
 
 ### Fixed
 

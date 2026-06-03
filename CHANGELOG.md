@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `.choice` flag kind: values are constrained to a declared `choices` set,
+  rejected at parse time with a "did you mean" suggestion and validated at
+  compile time (non-empty, unique, shell-safe, default must be a member).
+  Choices auto-populate shell completion and render in help, man pages, and the
+  command schema (new `"choices"` field).
+
 ## [0.1.0] - 2026-06-02
 
 ### Added

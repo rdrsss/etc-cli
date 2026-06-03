@@ -131,9 +131,26 @@ bundles:
 Attached short values are accepted for non-bool short flags, for example
 `-nname` and `-c3`. Short bundles are only accepted when every bundled short
 flag is boolean; ambiguous forms fail as unknown flags. Scalar flags still reject
-duplicates. Enum/choice kinds, floats, path/duration kinds, custom validators,
-flag groups, list-valued flags, and positional defaults are deferred API work;
-use strings plus application validation for those cases today.
+duplicates. Floats, path/duration kinds, custom validators, flag groups,
+list-valued flags, and positional defaults are deferred API work; use strings
+plus application validation for those cases today.
+
+## Choice Flags
+
+A `.choice` flag constrains its value to a declared set. Membership is enforced
+at parse time (with a nearest-match suggestion on a miss) and the set is checked
+at compile time — non-empty, unique, shell-safe, and any default must be a
+member:
+
+```zig
+.{ .long = "--format", .short = 'f', .kind = .choice,
+   .choices = &.{ "json", "text", "yaml" }, .default = .{ .choice = "text" } }
+```
+
+The generated args field is `[]const u8`, guaranteed to hold one of the
+choices. The set is declared once and drives everything: it auto-populates shell
+completion and renders as `(json|text|yaml)` in help, as the value placeholder
+in man pages, and as a `"choices"` array in the command schema.
 
 ## Environment Metadata
 

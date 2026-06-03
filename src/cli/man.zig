@@ -338,7 +338,7 @@ fn renderDefault(comptime d: flag_mod.Default) []const u8 {
     comptime {
         return switch (d) {
             .bool => |b| if (b) "true" else "false",
-            .string => |s| "\"" ++ roff(s) ++ "\"",
+            .string, .choice => |s| "\"" ++ roff(s) ++ "\"",
             .int => |i| std.fmt.comptimePrint("{d}", .{i}),
         };
     }
@@ -402,7 +402,21 @@ fn roffChar(comptime c: u8) []const u8 {
 }
 
 fn flagValuePlaceholder(comptime f: flag_mod.Flag) []const u8 {
-    return f.value_name orelse fallbackValuePlaceholder(f.kind);
+    comptime {
+        if (f.kind == .choice) return joinChoices(f.choices);
+        return f.value_name orelse fallbackValuePlaceholder(f.kind);
+    }
+}
+
+fn joinChoices(comptime choices: []const []const u8) []const u8 {
+    comptime {
+        var out: []const u8 = "";
+        for (choices, 0..) |c, i| {
+            if (i > 0) out = out ++ "|";
+            out = out ++ c;
+        }
+        return out;
+    }
 }
 
 fn fallbackValuePlaceholder(comptime kind: flag_mod.Kind) []const u8 {
@@ -410,6 +424,7 @@ fn fallbackValuePlaceholder(comptime kind: flag_mod.Kind) []const u8 {
         .bool => "",
         .string => "VALUE",
         .int => "N",
+        .choice => "",
     };
 }
 

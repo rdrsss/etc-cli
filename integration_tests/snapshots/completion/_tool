@@ -6,6 +6,10 @@ _tool() {
     cur="${words[CURRENT]}"
     prev="${words[CURRENT-1]}"
     case "$prev" in
+        --color)
+            _values 'values' "auto" "always" "never"; return ;;
+        --format)
+            _values 'values' "json" "text" "yaml"; return ;;
     esac
 
     path=""
@@ -26,12 +30,12 @@ _tool() {
     case "$path" in
         "")
             cmds=("run:Run target")
-            flags=("--verbose:Verbose output" "-v:Verbose output" "--help:Show help" "-h:Show help")
+            flags=("--verbose:Verbose output" "-v:Verbose output" "--color:When to colorize output" "--help:Show help" "-h:Show help")
             values=()
             ;;
         "run")
             cmds=()
-            flags=("--verbose:Verbose output" "-v:Verbose output" "--name:Target name" "--help:Show help" "-h:Show help")
+            flags=("--verbose:Verbose output" "-v:Verbose output" "--color:When to colorize output" "--name:Target name" "--format:Output format" "-f:Output format" "--help:Show help" "-h:Show help")
             values=()
             ;;
     esac

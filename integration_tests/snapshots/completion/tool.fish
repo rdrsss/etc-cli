@@ -20,4 +20,6 @@ end
 
 complete -c tool -n '__fish_tool_path ""' -f -a 'run' -d 'Run target'
 complete -c tool -n '__fish_tool_path ""' -f -l 'verbose' -s v -d 'Verbose output'
+complete -c tool -n '__fish_tool_path ""' -f -l 'color' -a 'auto always never' -d 'When to colorize output'
 complete -c tool -n '__fish_tool_path "run"' -f -l 'name' -d 'Target name'
+complete -c tool -n '__fish_tool_path "run"' -f -l 'format' -s f -a 'json text yaml' -d 'Output format'

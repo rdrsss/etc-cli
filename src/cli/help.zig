@@ -135,7 +135,7 @@ fn renderFlagLine(comptime f: flag_mod.Flag, comptime options: Options) []const 
     comptime {
         var out: []const u8 = f.long;
         if (f.short) |s| out = out ++ ", -" ++ &[_]u8{s};
-        out = out ++ padTo(out, if (compact(options)) 16 else 22) ++ "(" ++ @tagName(f.kind) ++ ")";
+        out = out ++ padTo(out, if (compact(options)) 16 else 22) ++ "(" ++ flagKindLabel(f) ++ ")";
         if (f.required) out = out ++ " required";
         if (f.default) |d| out = out ++ " default=" ++ renderDefault(d);
         if (f.desc.len > 0) {
@@ -189,9 +189,29 @@ fn renderDefault(comptime d: flag_mod.Default) []const u8 {
     comptime {
         return switch (d) {
             .bool => |b| if (b) "true" else "false",
-            .string => |s| "\"" ++ s ++ "\"",
+            .string, .choice => |s| "\"" ++ s ++ "\"",
             .int => |i| std.fmt.comptimePrint("{d}", .{i}),
         };
+    }
+}
+
+/// Label shown in the flag table: the kind name, or the `a|b|c` choice list
+/// for a choice flag so the allowed values are visible at a glance.
+fn flagKindLabel(comptime f: flag_mod.Flag) []const u8 {
+    comptime {
+        if (f.kind == .choice) return joinChoices(f.choices);
+        return @tagName(f.kind);
+    }
+}
+
+fn joinChoices(comptime choices: []const []const u8) []const u8 {
+    comptime {
+        var out: []const u8 = "";
+        for (choices, 0..) |c, i| {
+            if (i > 0) out = out ++ "|";
+            out = out ++ c;
+        }
+        return out;
     }
 }
 

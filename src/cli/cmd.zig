@@ -330,6 +330,7 @@ fn fillFlagField(
                 .bool => d.bool,
                 .string => d.string,
                 .int => d.int,
+                .choice => d.choice,
             };
             const wrapped: FieldT = v;
             break :blk @ptrCast(&wrapped);

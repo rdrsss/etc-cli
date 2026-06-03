@@ -299,10 +299,11 @@ fn bashFlagValueCasesForFlags(comptime flags: []const flag_mod.Flag, comptime op
         var out: []const u8 = "";
         for (flags) |f| {
             if (!visibleFlag(f, options)) continue;
-            if (f.completion.kind == .none) continue;
+            const comp = effectiveCompletion(f);
+            if (comp.kind == .none) continue;
             out = out ++ "        " ++ flagCaseNames(f) ++ ")\n";
-            out = out ++ switch (f.completion.kind) {
-                .values => "            COMPREPLY=( $(compgen -W \"" ++ joinWords(f.completion.values) ++ "\" -- \"$cur\") ); return ;;\n",
+            out = out ++ switch (comp.kind) {
+                .values => "            COMPREPLY=( $(compgen -W \"" ++ joinWords(comp.values) ++ "\" -- \"$cur\") ); return ;;\n",
                 .files => "            COMPREPLY=( $(compgen -f -- \"$cur\") ); return ;;\n",
                 .directories => "            COMPREPLY=( $(compgen -d -- \"$cur\") ); return ;;\n",
                 .none => unreachable,
@@ -330,10 +331,11 @@ fn zshFlagValueCasesForFlags(comptime flags: []const flag_mod.Flag, comptime opt
         var out: []const u8 = "";
         for (flags) |f| {
             if (!visibleFlag(f, options)) continue;
-            if (f.completion.kind == .none) continue;
+            const comp = effectiveCompletion(f);
+            if (comp.kind == .none) continue;
             out = out ++ "        " ++ flagCaseNames(f) ++ ")\n";
-            out = out ++ switch (f.completion.kind) {
-                .values => "            _values 'values' " ++ zshWords(joinWords(f.completion.values)) ++ "; return ;;\n",
+            out = out ++ switch (comp.kind) {
+                .values => "            _values 'values' " ++ zshWords(joinWords(comp.values)) ++ "; return ;;\n",
                 .files => "            _files; return ;;\n",
                 .directories => "            _files -/; return ;;\n",
                 .none => unreachable,
@@ -471,12 +473,13 @@ fn fishFlagLine(
             f.long[1..]
         else
             f.long;
+        const comp = effectiveCompletion(f);
         var out: []const u8 = "complete -c " ++ bin ++
             " -n '__fish_" ++ bin ++ "_path \"" ++ path ++ "\"'" ++
-            fishFlagCompletionPrefix(f.completion) ++
+            fishFlagCompletionPrefix(comp) ++
             " -l '" ++ fishSingleQuote(long_bare) ++ "'";
         if (f.short) |s| out = out ++ " -s " ++ &[_]u8{s};
-        out = out ++ fishCompletionArgs(f.completion);
+        out = out ++ fishCompletionArgs(comp);
         if (f.desc.len > 0) out = out ++ " -d '" ++ fishSingleQuote(f.desc) ++ "'";
         out = out ++ "\n";
         return out;
@@ -576,6 +579,16 @@ fn visibleFlag(comptime f: flag_mod.Flag, comptime options: Options) bool {
     if (f.hidden and !options.include_hidden) return false;
     if (f.deprecated != null and !options.include_deprecated) return false;
     return true;
+}
+
+/// Completion to emit for a flag. A `.choice` flag auto-completes its declared
+/// `choices` (unless it carries an explicit completion), so the author declares
+/// the value set once. Validation guarantees choices are shell-safe.
+fn effectiveCompletion(comptime f: flag_mod.Flag) @TypeOf(f.completion) {
+    if (f.kind == .choice and f.completion.kind == .none) {
+        return .{ .kind = .values, .values = f.choices };
+    }
+    return f.completion;
 }
 
 fn zshEscape(comptime s: []const u8) []const u8 {

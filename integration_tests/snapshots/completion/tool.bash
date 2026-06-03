@@ -6,6 +6,12 @@ _tool() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     case "$prev" in
+        --color)
+            COMPREPLY=( $(compgen -W "auto always never" -- "$cur") ); return ;;
+        --format)
+            COMPREPLY=( $(compgen -W "json text yaml" -- "$cur") ); return ;;
+        --config)
+            COMPREPLY=( $(compgen -f -- "$cur") ); return ;;
     esac
 
     path=""
@@ -25,12 +31,12 @@ _tool() {
     case "$path" in
         "")
             cmds="run"
-            flags="--verbose -v --help -h"
+            flags="--verbose -v --color --help -h"
             values=""
             ;;
         "run")
             cmds=""
-            flags="--verbose -v --name --help -h"
+            flags="--verbose -v --color --name --format -f --rate --interval --config --help -h"
             values=""
             ;;
         *)

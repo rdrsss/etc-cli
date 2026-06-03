@@ -6,6 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- New flag/positional value kinds:
+  - `.choice` — values constrained to a declared `choices` set, rejected at
+    parse time with a "did you mean" suggestion and validated at compile time
+    (non-empty, unique, shell-safe, default must be a member). Choices
+    auto-populate shell completion and render in help, man pages, and the schema
+    (new `"choices"` field).
+  - `.float` — `f64` values via `std.fmt.parseFloat`.
+  - `.duration` — human durations (`500ms`, `10m`, `1h`, bare seconds) parsed to
+    nanoseconds (`u64`); defaults render human-readable in help/man and as exact
+    nanoseconds in the schema.
+  - `.path` — string-typed filesystem path; auto-completes files and renders a
+    `PATH` placeholder.
+
 ## [0.1.0] - 2026-06-02
 
 ### Added

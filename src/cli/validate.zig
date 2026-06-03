@@ -71,6 +71,7 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
         validateLongFlagName(node.name, f.long);
         validateFlagAliases(node.name, f);
         validateReservedFlagName(node.name, f);
+        validateChoices(node.name, f);
         validateDeprecation("flag", f.long, f.deprecated);
         validateCompletion("flag", f.long, f.completion);
         if (f.short) |short| validateShortFlagName(node.name, f.long, short);
@@ -99,6 +100,9 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
     for (node.positionals) |p| {
         validateFieldName(node.name, "positional", p.name);
         validateCompletion("positional", p.name, p.completion);
+        if (p.kind == .choice) {
+            @compileError("validate: positional '" ++ p.name ++ "' in command '" ++ node.name ++ "' cannot use kind .choice; choice is supported on flags only");
+        }
         // A required positional may not follow an optional one: a single
         // supplied argument fills the earlier (optional) slot, leaving the
         // later required slot impossible to satisfy positionally.
@@ -273,6 +277,49 @@ fn validateReservedFlagName(comptime command_name: []const u8, comptime f: flag.
         if (short == 'h') {
             @compileError("validate: short flag '-h' on flag '" ++ f.long ++ "' in command '" ++ command_name ++ "' is reserved by the parser; remove or rename it");
         }
+    }
+}
+
+fn validateChoices(comptime command_name: []const u8, comptime f: flag.Flag) void {
+    if (f.kind == .choice) {
+        if (f.choices.len == 0) {
+            @compileError("validate: choice flag '" ++ f.long ++ "' in command '" ++ command_name ++ "' must declare at least one entry in `choices`");
+        }
+        if (f.value_name != null) {
+            @compileError("validate: choice flag '" ++ f.long ++ "' in command '" ++ command_name ++ "' cannot define value_name; the choice list is the placeholder");
+        }
+        for (f.choices, 0..) |choice, i| {
+            if (choice.len == 0) {
+                @compileError("validate: choice flag '" ++ f.long ++ "' in command '" ++ command_name ++ "' has an empty choice");
+            }
+            for (choice) |c| {
+                if (!isSafeCompletionChar(c)) {
+                    @compileError("validate: choice flag '" ++ f.long ++ "' choice '" ++ choice ++ "' has an unsafe character; choices must be shell-safe (alphanumerics and - _ . / @ % + , =)");
+                }
+            }
+            for (f.choices[i + 1 ..]) |other| {
+                if (std.mem.eql(u8, choice, other)) {
+                    @compileError("validate: choice flag '" ++ f.long ++ "' has duplicate choice '" ++ choice ++ "'");
+                }
+            }
+        }
+        // A choice default must be one of the declared choices. Guard on the
+        // tag so a mismatched-kind default produces the dedicated error below
+        // rather than a raw union-access failure here.
+        if (f.default) |d| {
+            const default_tag: flag.Kind = d;
+            if (default_tag == .choice) {
+                var found = false;
+                for (f.choices) |choice| {
+                    if (std.mem.eql(u8, choice, d.choice)) found = true;
+                }
+                if (!found) {
+                    @compileError("validate: choice flag '" ++ f.long ++ "' default '" ++ d.choice ++ "' is not one of its choices");
+                }
+            }
+        }
+    } else if (f.choices.len != 0) {
+        @compileError("validate: flag '" ++ f.long ++ "' in command '" ++ command_name ++ "' declares `choices` but kind is not .choice");
     }
 }
 

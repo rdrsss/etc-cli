@@ -9,15 +9,21 @@ const std = @import("std");
 const meta_mod = @import("meta.zig");
 
 /// Value kind for a flag or positional. Drives both parsing and the type of
-/// the corresponding field on the generated args struct.
-pub const Kind = enum { bool, string, int };
+/// the corresponding field on the generated args struct. `.choice` is a
+/// string constrained at parse time to a declared `choices` set.
+pub const Kind = enum { bool, string, int, float, duration, path, choice };
 
 /// Comptime-known default value for a flag. The tag must match the flag's
-/// declared `kind`; the validator checks this at compile time.
+/// declared `kind`; the validator checks this at compile time. A `.duration`
+/// value is nanoseconds; a `.path` value is an unvalidated filesystem path.
 pub const Default = union(Kind) {
     bool: bool,
     string: []const u8,
     int: i64,
+    float: f64,
+    duration: u64,
+    path: []const u8,
+    choice: []const u8,
 };
 
 /// A flag spec. `long` is the canonical long form (e.g. "--verbose"); `short`
@@ -35,6 +41,10 @@ pub const Flag = struct {
     /// Manual/help placeholder for non-bool flag values, such as PATH or
     /// COUNT. Parsing is still driven only by `kind`.
     value_name: ?[]const u8 = null,
+    /// Allowed values for a `.choice` flag. Required (non-empty) when
+    /// `kind == .choice`, and must be empty otherwise. The set drives
+    /// parse-time membership validation and auto-populates shell completion.
+    choices: []const []const u8 = &.{},
     default: ?Default = null,
     required: bool = false,
     env: ?[]const u8 = null,
@@ -56,8 +66,10 @@ pub const Positional = struct {
 pub fn ValueType(comptime k: Kind) type {
     return switch (k) {
         .bool => bool,
-        .string => []const u8,
+        .string, .choice, .path => []const u8,
         .int => i64,
+        .float => f64,
+        .duration => u64,
     };
 }
 

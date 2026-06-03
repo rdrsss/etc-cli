@@ -114,6 +114,7 @@ fn renderFlag(comptime f: flag_mod.Flag, comptime source: []const u8, comptime o
         }
         out = out ++ ",";
         out = out ++ "\"kind\":" ++ jsonString(@tagName(f.kind)) ++ ",";
+        out = out ++ "\"choices\":" ++ renderStringArray(f.choices) ++ ",";
         out = out ++ "\"required\":" ++ boolText(f.required) ++ ",";
         out = out ++ "\"source\":" ++ jsonString(source) ++ ",";
         out = out ++ "\"valueName\":";
@@ -279,8 +280,11 @@ fn renderDefault(comptime default: ?flag_mod.Default) []const u8 {
         if (default == null) return "null";
         return switch (default.?) {
             .bool => |b| boolText(b),
-            .string => |s| jsonString(s),
+            .string, .choice, .path => |s| jsonString(s),
             .int => |i| std.fmt.comptimePrint("{d}", .{i}),
+            .float => |x| std.fmt.comptimePrint("{d}", .{x}),
+            // Nanoseconds — precise integer for machine consumers.
+            .duration => |ns| std.fmt.comptimePrint("{d}", .{ns}),
         };
     }
 }
@@ -298,6 +302,10 @@ fn fallbackValueName(comptime kind: flag_mod.Kind) []const u8 {
         .bool => "",
         .string => "VALUE",
         .int => "N",
+        .float => "X",
+        .duration => "DURATION",
+        .path => "PATH",
+        .choice => "",
     };
 }
 

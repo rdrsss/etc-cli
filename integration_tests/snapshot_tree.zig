@@ -9,6 +9,7 @@ pub const root = cli.Cmd{
     .desc = "Snapshot tool",
     .flags = &.{
         .{ .long = "--verbose", .short = 'v', .desc = "Verbose output", .kind = .bool, .default = .{ .bool = false } },
+        .{ .long = "--color", .kind = .choice, .choices = &.{ "auto", "always", "never" }, .default = .{ .choice = "auto" }, .desc = "When to colorize output" },
     },
     .cmds = &.{
         .{
@@ -16,6 +17,10 @@ pub const root = cli.Cmd{
             .desc = "Run target",
             .flags = &.{
                 .{ .long = "--name", .kind = .string, .desc = "Target name", .value_name = "NAME" },
+                .{ .long = "--format", .short = 'f', .kind = .choice, .choices = &.{ "json", "text", "yaml" }, .default = .{ .choice = "text" }, .desc = "Output format" },
+                .{ .long = "--rate", .kind = .float, .default = .{ .float = 1.5 }, .desc = "Sampling rate" },
+                .{ .long = "--interval", .kind = .duration, .default = .{ .duration = 600 * 1_000_000_000 }, .desc = "Poll interval" },
+                .{ .long = "--config", .kind = .path, .desc = "Config file path" },
             },
             .positionals = &.{
                 .{ .name = "target", .desc = "Target id", .kind = .string },

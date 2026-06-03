@@ -35,6 +35,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   non-bool `.env` flags absent from argv are filled from the environment
   (precedence argv > env > default > required). `parse`/`dispatch` stay
   env-unaware.
+- Dynamic shell completion: `cli.Completion.dynamic(fn)` declares a runtime
+  completion callback. Generated bash/zsh/fish scripts call the program's
+  `__complete` builtin (auto-wired by `cli.run`, or `cli.complete` to wire
+  manually); static completion is unchanged.
 
 ### Fixed
 

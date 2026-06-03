@@ -45,6 +45,43 @@ pub fn scriptWithOptions(comptime root: cmd_mod.Cmd, comptime shell: Shell, comp
 }
 
 // =========================================================================
+// Runtime dynamic completion
+// =========================================================================
+
+/// Runtime completion entrypoint, reached via the `__complete` builtin that
+/// generated scripts invoke for dynamic flags. `words` are the tokens after
+/// `__complete`: `[flag_long, prefix?]`. Finds the matching dynamic flag,
+/// invokes its callback with the prefix, and prints candidates one per line.
+pub fn complete(
+    comptime root: cmd_mod.Cmd,
+    words: []const []const u8,
+    writer: *std.Io.Writer,
+) std.Io.Writer.Error!void {
+    if (words.len == 0) return;
+    const flag_long = words[0];
+    const prefix = if (words.len >= 2) words[1] else "";
+    inline for (comptime allTreeFlags(root)) |f| {
+        if (comptime f.completion.kind == .dynamic) {
+            if (std.mem.eql(u8, f.long, flag_long)) {
+                for (f.completion.callback.?(prefix)) |candidate| {
+                    try writer.print("{s}\n", .{candidate});
+                }
+                try writer.flush();
+                return;
+            }
+        }
+    }
+}
+
+fn allTreeFlags(comptime root: cmd_mod.Cmd) []const flag_mod.Flag {
+    comptime {
+        var out: []const flag_mod.Flag = root.flags;
+        for (cmd_mod.allNodes(root)) |node| out = out ++ node.cmd.flags;
+        return out;
+    }
+}
+
+// =========================================================================
 // Bash
 // =========================================================================
 
@@ -306,6 +343,7 @@ fn bashFlagValueCasesForFlags(comptime flags: []const flag_mod.Flag, comptime op
                 .values => "            COMPREPLY=( $(compgen -W \"" ++ joinWords(comp.values) ++ "\" -- \"$cur\") ); return ;;\n",
                 .files => "            COMPREPLY=( $(compgen -f -- \"$cur\") ); return ;;\n",
                 .directories => "            COMPREPLY=( $(compgen -d -- \"$cur\") ); return ;;\n",
+                .dynamic => "            COMPREPLY=( $(compgen -W \"$(\"${COMP_WORDS[0]}\" __complete " ++ f.long ++ " \"$cur\")\" -- \"$cur\") ); return ;;\n",
                 .none => unreachable,
             };
         }
@@ -338,6 +376,7 @@ fn zshFlagValueCasesForFlags(comptime flags: []const flag_mod.Flag, comptime opt
                 .values => "            _values 'values' " ++ zshWords(joinWords(comp.values)) ++ "; return ;;\n",
                 .files => "            _files; return ;;\n",
                 .directories => "            _files -/; return ;;\n",
+                .dynamic => "            compadd -- ${(f)\"$(\"$words[1]\" __complete " ++ f.long ++ " \"$cur\")\"}; return ;;\n",
                 .none => unreachable,
             };
         }
@@ -479,7 +518,10 @@ fn fishFlagLine(
             fishFlagCompletionPrefix(comp) ++
             " -l '" ++ fishSingleQuote(long_bare) ++ "'";
         if (f.short) |s| out = out ++ " -s " ++ &[_]u8{s};
-        out = out ++ fishCompletionArgs(comp);
+        out = out ++ if (comp.kind == .dynamic)
+            " -a '(" ++ bin ++ " __complete " ++ f.long ++ " (commandline -ct))'"
+        else
+            fishCompletionArgs(comp);
         if (f.desc.len > 0) out = out ++ " -d '" ++ fishSingleQuote(f.desc) ++ "'";
         out = out ++ "\n";
         return out;
@@ -554,7 +596,7 @@ fn zshWords(comptime words: []const u8) []const u8 {
 fn fishFlagCompletionPrefix(comptime completion: anytype) []const u8 {
     return switch (completion.kind) {
         .files, .directories => "",
-        .none, .values => " -f",
+        .none, .values, .dynamic => " -f",
     };
 }
 
@@ -565,6 +607,7 @@ fn fishCompletionArgs(comptime completion: anytype) []const u8 {
             .values => " -a '" ++ fishSingleQuote(joinWords(completion.values)) ++ "'",
             .files => "",
             .directories => " -a '(__fish_complete_directories)'",
+            .dynamic => "", // handled inline in fishFlagLine
         };
     }
 }
@@ -690,6 +733,32 @@ test "zsh script uses compdef and _describe" {
     // Description from the Cmd appears next to its name.
     try std.testing.expect(std.mem.indexOf(u8, s, "\"task:Manage tasks\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, s, "\"add:Add a task\"") != null);
+}
+
+fn dynHostCandidates(prefix: []const u8) []const []const u8 {
+    _ = prefix;
+    return &.{ "alpha", "beta" };
+}
+
+const dyn_root = cmd_mod.Cmd{
+    .name = "tool",
+    .flags = &.{
+        .{ .long = "--host", .kind = .string, .completion = .{ .kind = .dynamic, .callback = dynHostCandidates } },
+    },
+};
+
+test "dynamic completion wires __complete in all shells and complete() runs the callback" {
+    inline for (.{ Shell.bash, Shell.zsh, Shell.fish }) |sh| {
+        const s = comptime script(dyn_root, sh);
+        try std.testing.expect(std.mem.indexOf(u8, s, "__complete --host") != null);
+    }
+
+    var buf: [256]u8 = undefined;
+    var w = std.Io.Writer.fixed(&buf);
+    try complete(dyn_root, &.{ "--host", "al" }, &w);
+    const out = w.buffered();
+    try std.testing.expect(std.mem.indexOf(u8, out, "alpha\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "beta\n") != null);
 }
 
 test "fish script emits per-path complete lines with descriptions" {

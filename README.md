@@ -200,8 +200,21 @@ Flags and positionals can also declare static value completions:
 
 Static value choices are embedded directly into generated bash, zsh, and fish
 scripts. File and directory completions use each shell's native file completion
-behavior where possible. Runtime/dynamic completion callbacks are explicitly
-deferred; use static metadata or application-owned completion commands for now.
+behavior where possible.
+
+For values only known at runtime, declare a dynamic completion callback:
+
+```zig
+.{ .long = "--host", .completion = cli.Completion.dynamic(completeHosts) }
+
+fn completeHosts(prefix: []const u8) []const []const u8 {
+    // ... compute candidates for `prefix` ...
+}
+```
+
+The generated scripts invoke the program's `__complete` builtin for dynamic
+flags. `cli.run` wires that builtin automatically; to wire it yourself (e.g.
+under `dispatch`), route `<prog> __complete <flag> <prefix>` to `cli.complete`.
 
 ## Man Pages
 

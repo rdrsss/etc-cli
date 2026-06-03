@@ -4,6 +4,11 @@
 
 const cli = @import("cli");
 
+fn completeHosts(prefix: []const u8) []const []const u8 {
+    _ = prefix;
+    return &.{"localhost"};
+}
+
 pub const root = cli.Cmd{
     .name = "tool",
     .desc = "Snapshot tool",
@@ -22,6 +27,7 @@ pub const root = cli.Cmd{
                 .{ .long = "--interval", .kind = .duration, .default = .{ .duration = 600 * 1_000_000_000 }, .desc = "Poll interval" },
                 .{ .long = "--config", .kind = .path, .desc = "Config file path" },
                 .{ .long = "--tag", .kind = .string, .list = true, .desc = "Repeatable tag" },
+                .{ .long = "--host", .kind = .string, .completion = cli.Completion.dynamic(completeHosts), .desc = "Target host (dynamic)" },
             },
             .positionals = &.{
                 .{ .name = "target", .desc = "Target id", .kind = .string },

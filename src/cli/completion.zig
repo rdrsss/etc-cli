@@ -14,8 +14,9 @@
 //! emits one flat `complete` line per option gated by a path-match helper.
 //!
 //! Limitations (intentional, v1):
-//!   - Flag *values* are completed only from static `completion` metadata,
-//!     not dynamically.
+//!   - Flag *values* are completed from static `completion` metadata or
+//!     runtime dynamic callbacks; command and flag names are generated
+//!     statically from the command tree.
 //!   - Descriptions are escaped per shell (see `zshEscapeDesc` /
 //!     `fishSingleQuote`); static completion values are validated to be
 //!     shell-safe at comptime in `validate.zig`.
@@ -103,6 +104,10 @@ fn bashScript(comptime root: cmd_mod.Cmd, comptime options: Options) []const u8 
             \\    path=""
             \\    for (( i=1; i<COMP_CWORD; i++ )); do
             \\        case "${COMP_WORDS[i]}" in
+        ;
+        out = out ++ bashPathValueSkipCases(root, options);
+        out = out ++
+            \\
             \\            -*) ;;
             \\            *)
             \\                if [[ -z "$path" ]]; then
@@ -184,6 +189,10 @@ fn zshScript(comptime root: cmd_mod.Cmd, comptime options: Options) []const u8 {
             \\    path=""
             \\    for (( i=2; i<CURRENT; i++ )); do
             \\        case "${words[i]}" in
+        ;
+        out = out ++ zshPathValueSkipCases(root, options);
+        out = out ++
+            \\
             \\            -*) ;;
             \\            *)
             \\                if [[ -z "$path" ]]; then
@@ -255,9 +264,19 @@ fn fishScript(comptime root: cmd_mod.Cmd, comptime options: Options) []const u8 
             \\    set -l cmd (commandline -opc)
             \\    set -l path
             \\    set -l first 1
+            \\    set -l skip_next 0
             \\    for word in $cmd[2..]
-            \\        if string match -q -- '-*' $word
+            \\        if test $skip_next -eq 1
+            \\            set skip_next 0
             \\            continue
+            \\        end
+            \\        switch $word
+        ;
+        out = out ++ fishPathValueSkipCases(root, options);
+        out = out ++
+            \\
+            \\            case '-*'
+            \\                continue
             \\        end
             \\        if test $first -eq 1
             \\            set path $word
@@ -316,6 +335,70 @@ fn joinPath(comptime path: []const []const u8) []const u8 {
         for (path[1..]) |seg| out = out ++ " " ++ seg;
         return out;
     }
+}
+
+fn bashPathValueSkipCases(comptime root: cmd_mod.Cmd, comptime options: Options) []const u8 {
+    return comptime shellPathValueSkipCases(root, options, .bash);
+}
+
+fn zshPathValueSkipCases(comptime root: cmd_mod.Cmd, comptime options: Options) []const u8 {
+    return comptime shellPathValueSkipCases(root, options, .zsh);
+}
+
+fn shellPathValueSkipCases(comptime root: cmd_mod.Cmd, comptime options: Options, comptime shell: Shell) []const u8 {
+    comptime {
+        var out: []const u8 = "";
+        out = out ++ shellPathValueSkipCasesForFlags(root.flags, options, shell);
+        for (cmd_mod.allNodes(root)) |n| {
+            if (!visibleCmd(n.cmd, options)) continue;
+            out = out ++ shellPathValueSkipCasesForFlags(n.cmd.flags, options, shell);
+        }
+        return out;
+    }
+}
+
+fn shellPathValueSkipCasesForFlags(comptime flags: []const flag_mod.Flag, comptime options: Options, comptime shell: Shell) []const u8 {
+    comptime {
+        var out: []const u8 = "";
+        for (flags) |f| {
+            if (!flagConsumesSeparateValue(f, options)) continue;
+            out = out ++ "\n            " ++ flagCaseNamesWithShort(f) ++ ")\n";
+            out = out ++ switch (shell) {
+                .bash, .zsh => "                (( i++ ))\n                ;;\n",
+                .fish => unreachable,
+            };
+        }
+        return out;
+    }
+}
+
+fn fishPathValueSkipCases(comptime root: cmd_mod.Cmd, comptime options: Options) []const u8 {
+    comptime {
+        var out: []const u8 = "";
+        out = out ++ fishPathValueSkipCasesForFlags(root.flags, options);
+        for (cmd_mod.allNodes(root)) |n| {
+            if (!visibleCmd(n.cmd, options)) continue;
+            out = out ++ fishPathValueSkipCasesForFlags(n.cmd.flags, options);
+        }
+        return out;
+    }
+}
+
+fn fishPathValueSkipCasesForFlags(comptime flags: []const flag_mod.Flag, comptime options: Options) []const u8 {
+    comptime {
+        var out: []const u8 = "";
+        for (flags) |f| {
+            if (!flagConsumesSeparateValue(f, options)) continue;
+            out = out ++ "\n            case " ++ fishFlagCaseNamesWithShort(f) ++ "\n";
+            out = out ++ "                set skip_next 1\n";
+            out = out ++ "                continue\n";
+        }
+        return out;
+    }
+}
+
+fn flagConsumesSeparateValue(comptime f: flag_mod.Flag, comptime options: Options) bool {
+    return visibleFlag(f, options) and f.kind != .bool;
 }
 
 fn bashFlagValueCases(comptime root: cmd_mod.Cmd, comptime options: Options) []const u8 {
@@ -388,6 +471,23 @@ fn flagCaseNames(comptime f: flag_mod.Flag) []const u8 {
     comptime {
         var out: []const u8 = f.long;
         for (f.aliases) |alias| out = out ++ "|" ++ alias;
+        return out;
+    }
+}
+
+fn flagCaseNamesWithShort(comptime f: flag_mod.Flag) []const u8 {
+    comptime {
+        var out: []const u8 = flagCaseNames(f);
+        if (f.short) |s| out = out ++ "|-" ++ &[_]u8{s};
+        return out;
+    }
+}
+
+fn fishFlagCaseNamesWithShort(comptime f: flag_mod.Flag) []const u8 {
+    comptime {
+        var out: []const u8 = "'" ++ fishSingleQuote(f.long) ++ "'";
+        for (f.aliases) |alias| out = out ++ " '" ++ fishSingleQuote(alias) ++ "'";
+        if (f.short) |s| out = out ++ " '-" ++ &[_]u8{s} ++ "'";
         return out;
     }
 }

@@ -8,9 +8,9 @@ assignees: ''
 
 ## Problem
 
-What are you trying to do that `etc-cli` does not support today? Several of the
-deferred areas are documented in `README.md` (e.g. enum/choice kinds, list-valued
-flags, dynamic completion, env fallback) — note if your request is one of those.
+What are you trying to do that `etc-cli` does not support today? Deferred areas
+are documented in `README.md` (for example flag groups and the current limits of
+runner-owned env fallback) — note if your request is one of those.
 
 ## Proposed API or behavior
 

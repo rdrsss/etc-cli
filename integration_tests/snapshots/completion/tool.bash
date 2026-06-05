@@ -19,6 +19,38 @@ _tool() {
     path=""
     for (( i=1; i<COMP_CWORD; i++ )); do
         case "${COMP_WORDS[i]}" in
+            --color)
+                (( i++ ))
+                ;;
+
+            --name)
+                (( i++ ))
+                ;;
+
+            --format|-f)
+                (( i++ ))
+                ;;
+
+            --rate)
+                (( i++ ))
+                ;;
+
+            --interval)
+                (( i++ ))
+                ;;
+
+            --config)
+                (( i++ ))
+                ;;
+
+            --tag)
+                (( i++ ))
+                ;;
+
+            --host)
+                (( i++ ))
+                ;;
+
             -*) ;;
             *)
                 if [[ -z "$path" ]]; then

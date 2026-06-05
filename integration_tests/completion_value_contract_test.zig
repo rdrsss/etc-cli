@@ -3,6 +3,10 @@ const cli = @import("cli");
 
 const root = cli.Cmd{
     .name = "tool",
+    .flags = &.{
+        .{ .long = "--color", .short = 'C', .kind = .choice, .choices = &.{ "auto", "always", "never" } },
+        .{ .long = "--config", .short = 'c', .kind = .path },
+    },
     .cmds = &.{
         .{
             .name = "run",
@@ -57,6 +61,8 @@ test "static value completions produce filtered candidate output" {
     defer tmp.cleanup();
 
     try expectBashCandidates(tmp.dir, &.{ "tool", "run", "--mode", "j" }, "json\n", &.{}, &.{"text\n"});
+    try expectBashCandidates(tmp.dir, &.{ "tool", "--color", "always", "run", "--mode", "j" }, "json\n", &.{}, &.{"text\n"});
+    try expectBashCandidates(tmp.dir, &.{ "tool", "-c", "tool.conf", "run", "--mode", "j" }, "json\n", &.{}, &.{"text\n"});
     try expectBashCandidates(tmp.dir, &.{ "tool", "run", "b" }, "beta\n", &.{}, &.{"alpha\n"});
 }
 

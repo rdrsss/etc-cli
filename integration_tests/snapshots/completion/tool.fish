@@ -4,9 +4,47 @@ function __fish_tool_path
     set -l cmd (commandline -opc)
     set -l path
     set -l first 1
+    set -l skip_next 0
     for word in $cmd[2..]
-        if string match -q -- '-*' $word
+        if test $skip_next -eq 1
+            set skip_next 0
             continue
+        end
+        switch $word
+            case '--color'
+                set skip_next 1
+                continue
+
+            case '--name'
+                set skip_next 1
+                continue
+
+            case '--format' '-f'
+                set skip_next 1
+                continue
+
+            case '--rate'
+                set skip_next 1
+                continue
+
+            case '--interval'
+                set skip_next 1
+                continue
+
+            case '--config'
+                set skip_next 1
+                continue
+
+            case '--tag'
+                set skip_next 1
+                continue
+
+            case '--host'
+                set skip_next 1
+                continue
+
+            case '-*'
+                continue
         end
         if test $first -eq 1
             set path $word

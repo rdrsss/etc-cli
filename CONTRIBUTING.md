@@ -10,11 +10,12 @@ By participating, you agree to abide by the [Code of Conduct](CODE_OF_CONDUCT.md
 - Zig `0.16.x` (the version is pinned in CI; `minimum_zig_version` in
   `build.zig.zon` is a floor, not a guarantee that newer majors work).
 - Optional, for the documentation/completion lint gates:
-  - `mandoc` — advisory man-page linting.
+  - `mandoc` — strict man-page linting.
   - `bash`, `zsh`, `fish` — shell-specific completion syntax checks.
 
 When an optional tool is absent, its lint gate prints a skip message and
-succeeds, so you can build and test without them.
+succeeds, so you can build and test without them. When `mandoc` is installed,
+any `mandoc -Tlint` warning or error fails the test step.
 
 ## Build and test
 

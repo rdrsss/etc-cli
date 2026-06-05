@@ -1,0 +1,13 @@
+group
+
+  Parent command
+
+USAGE:
+  group [flags] <command>
+
+COMMANDS:
+  run             Leaf command
+
+FLAGS:
+  --global, -g          (bool) default=false — Global flag
+  --profile             (string) — Profile name

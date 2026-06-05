@@ -43,3 +43,29 @@ pub const root = cli.Cmd{
         },
     },
 };
+
+pub const inherited_help_root = cli.Cmd{
+    .name = "tool",
+    .desc = "Inherited help snapshot tool",
+    .flags = &.{
+        .{ .long = "--global", .short = 'g', .kind = .bool, .default = .{ .bool = false }, .desc = "Global flag" },
+    },
+    .cmds = &.{
+        .{
+            .name = "group",
+            .desc = "Parent command",
+            .flags = &.{
+                .{ .long = "--profile", .kind = .string, .desc = "Profile name" },
+            },
+            .cmds = &.{
+                .{
+                    .name = "run",
+                    .desc = "Leaf command",
+                    .flags = &.{
+                        .{ .long = "--count", .short = 'c', .kind = .int, .default = .{ .int = 1 }, .desc = "Run count" },
+                    },
+                },
+            },
+        },
+    },
+};

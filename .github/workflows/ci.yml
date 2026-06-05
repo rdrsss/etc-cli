@@ -51,8 +51,8 @@ jobs:
       - name: Zig version
         run: zig version
 
-      # Optional lint tools. The test step skips each gate when its tool is
-      # absent, so these only enrich coverage; they never gate the build.
+      # Optional local lint tools. The test step skips each gate when its tool
+      # is absent, but installed tools are strict gates in CI.
       - name: Install optional lint tools (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y mandoc zsh fish

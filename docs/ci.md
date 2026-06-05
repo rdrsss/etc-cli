@@ -26,14 +26,16 @@ The committed workflow lives at `.github/workflows/ci.yml` and runs this command
 on every push to `master`, every pull request, and every `v*` tag.
 
 The test step compiles the package, downstream import fixtures, integration
-tests, compile-fail validation fixtures, generated artifact snapshots, optional
-completion linting, optional man-page linting, parser property tests, and the
-example executable.
+tests, compile-fail validation fixtures, generated artifact snapshots,
+completion linting when shells are available, strict man-page linting when
+`mandoc` is available, parser property tests, and the example executable.
 
 Optional local tools:
 
-- `mandoc` enables advisory man-page linting.
+- `mandoc` enables strict man-page linting; any `mandoc -Tlint` warning or
+  error fails the test step.
 - `bash`, `zsh`, and `fish` enable shell-specific completion syntax checks.
 
 Absence of optional tools should skip that specific lint and keep the core test
-matrix green.
+matrix green. The committed CI workflow installs `mandoc`, `zsh`, and `fish`
+where available, so those installed-tool lints are real CI gates.

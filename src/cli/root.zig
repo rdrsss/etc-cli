@@ -35,7 +35,8 @@
 //!       // switch (result) { .match => |u| switch (u) { ... }, .help => |p| ... }
 //!   }
 //!
-//!   fn handleDoIt(args: cli.ArgsType(root, &.{"do"})) !void {
+//!   fn handleDoIt(args_ptr: *const anyopaque) anyerror!void {
+//!       const args = cli.castArgs(root, &.{"do"}, args_ptr);
 //!       std.debug.print("doing it with: {s}\n", .{args.it});
 //!   }
 
@@ -120,10 +121,11 @@ pub const artifacts = artifacts_mod;
 
 // Runtime entry points.
 //
-// Reentrancy: `parse`/`dispatch`/`run` use small module-static buffers for the
-// resolved command path and any `rest_field` capture, so they are
-// single-threaded by construction. Consume (or copy) a result before the next
-// call, and do not invoke them concurrently from multiple threads.
+// Reentrancy: `parse`/`dispatch`/`run` use small module-static buffers for
+// resolved help paths, `rest_field` captures, list-flag slices, and the
+// runner's env-expanded argv. Those slices are valid only until the next
+// parse/dispatch/run invocation. Consume or copy them before calling again,
+// and do not invoke these entry points concurrently from multiple threads.
 pub const run = app_mod.run;
 // Options/exit-code types for the flat `run` entry point. Named flat to pair
 // with `run` (as `parse`/`dispatch` are flat), mirroring how the `man` and

@@ -2,6 +2,8 @@
 //!
 //! `validate(root)` runs at compile time and `@compileError`s on:
 //!   - duplicate long-flag names within a command (including inherited)
+//!   - declared long-flag names or aliases that collide with implicit bool
+//!     negation names within a command (including inherited)
 //!   - duplicate short-flag chars within a command (including inherited)
 //!   - duplicate sub-command names within a parent
 //!   - invalid command, flag, positional, and rest-field syntax
@@ -58,6 +60,7 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
             }
         }
     }
+    validateBoolNegationCollisions(node.name, combined);
 
     // Duplicate short chars.
     for (combined, 0..) |a, i| {
@@ -445,6 +448,40 @@ fn flagLongNamesOverlap(comptime a: flag.Flag, comptime b: flag.Flag) ?[]const u
         if (std.mem.eql(u8, name, a.long)) return name;
     }
     return null;
+}
+
+fn validateBoolNegationCollisions(comptime command_name: []const u8, comptime flags: []const flag.Flag) void {
+    for (flags) |f| {
+        if (f.kind != .bool) continue;
+        validateBoolNegationName(command_name, flags, f.long);
+        for (f.aliases) |alias| {
+            validateBoolNegationName(command_name, flags, alias);
+        }
+    }
+}
+
+fn validateBoolNegationName(
+    comptime command_name: []const u8,
+    comptime flags: []const flag.Flag,
+    comptime source_name: []const u8,
+) void {
+    if (!std.mem.startsWith(u8, source_name, "--")) return;
+
+    const negated = "--no-" ++ source_name[2..];
+    for (flags) |candidate| {
+        if (std.mem.eql(u8, candidate.long, negated)) {
+            boolNegationCollision(command_name, negated);
+        }
+        for (candidate.aliases) |alias| {
+            if (std.mem.eql(u8, alias, negated)) {
+                boolNegationCollision(command_name, negated);
+            }
+        }
+    }
+}
+
+fn boolNegationCollision(comptime command_name: []const u8, comptime name: []const u8) noreturn {
+    @compileError("validate: flag long name or alias '" ++ name ++ "' in '" ++ command_name ++ "' (or inherited) collides with implicit bool negation");
 }
 
 fn isCliToken(comptime s: []const u8) bool {

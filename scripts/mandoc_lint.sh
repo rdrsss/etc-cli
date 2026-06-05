@@ -8,5 +8,5 @@ fi
 
 for page in integration_tests/snapshots/man/*.1; do
     [ -e "$page" ] || continue
-    mandoc -Tlint "$page" || true
+    mandoc -Tlint "$page"
 done

@@ -9,7 +9,7 @@ const root = cli.Cmd{
     .name = "tool",
     .desc = "Runner fixture",
     .flags = &.{
-        .{ .long = "--token", .kind = .string, .env = "TOOL_TOKEN" },
+        .{ .long = "--token", .aliases = &.{"--auth"}, .short = 't', .kind = .string, .env = "TOOL_TOKEN" },
     },
     .cmds = &.{
         .{
@@ -44,6 +44,7 @@ comptime {
 fn reset() void {
     handler_called = false;
     handler_name = "";
+    handler_token = "";
 }
 
 fn handleRun(args_ptr: *const anyopaque) anyerror!void {
@@ -58,21 +59,48 @@ fn fakeEnv(name: []const u8) ?[]const u8 {
     return null;
 }
 
-test "runner fills a global flag from env when absent and lets argv win when present" {
+fn missingEnv(_: []const u8) ?[]const u8 {
+    return null;
+}
+
+fn expectRunToken(
+    argv: []const []const u8,
+    expected: []const u8,
+    env_lookup: ?*const fn (name: []const u8) ?[]const u8,
+) !void {
     var so: [1024]u8 = undefined;
     var se: [1024]u8 = undefined;
-
-    handler_token = "";
     var stdout = std.Io.Writer.fixed(&so);
     var stderr = std.Io.Writer.fixed(&se);
-    _ = try cli.run(root, .{ .argv = &.{ "tool", "run", "--name", "x" }, .stdout = &stdout, .stderr = &stderr, .env_lookup = fakeEnv });
-    try std.testing.expectEqualStrings("envtoken", handler_token);
 
     handler_token = "";
-    stdout = std.Io.Writer.fixed(&so);
-    stderr = std.Io.Writer.fixed(&se);
-    _ = try cli.run(root, .{ .argv = &.{ "tool", "run", "--name", "x", "--token", "cli" }, .stdout = &stdout, .stderr = &stderr, .env_lookup = fakeEnv });
-    try std.testing.expectEqualStrings("cli", handler_token);
+    const code = try cli.run(root, .{ .argv = argv, .stdout = &stdout, .stderr = &stderr, .env_lookup = env_lookup });
+    try std.testing.expectEqual(@as(u8, 0), code);
+    try std.testing.expectEqualStrings(expected, handler_token);
+}
+
+test "runner fills a global flag from env when absent and leaves it empty when env is absent" {
+    try expectRunToken(&.{ "tool", "run", "--name", "x" }, "envtoken", fakeEnv);
+    try expectRunToken(&.{ "tool", "run", "--name", "x" }, "", missingEnv);
+}
+
+test "runner lets every env-backed global flag spelling win over env" {
+    const Case = struct {
+        argv: []const []const u8,
+        expected: []const u8,
+    };
+    const cases = [_]Case{
+        .{ .argv = &.{ "tool", "run", "--name", "x", "--token", "cli-long" }, .expected = "cli-long" },
+        .{ .argv = &.{ "tool", "run", "--name", "x", "--token=cli-equals" }, .expected = "cli-equals" },
+        .{ .argv = &.{ "tool", "run", "--name", "x", "--auth", "cli-alias" }, .expected = "cli-alias" },
+        .{ .argv = &.{ "tool", "run", "--name", "x", "--auth=cli-alias-equals" }, .expected = "cli-alias-equals" },
+        .{ .argv = &.{ "tool", "run", "--name", "x", "-t", "cli-short" }, .expected = "cli-short" },
+        .{ .argv = &.{ "tool", "run", "--name", "x", "-tcli-attached" }, .expected = "cli-attached" },
+    };
+
+    for (cases) |c| {
+        try expectRunToken(c.argv, c.expected, fakeEnv);
+    }
 }
 
 fn handleFail(_: *const anyopaque) anyerror!void {

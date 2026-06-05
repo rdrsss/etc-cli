@@ -62,7 +62,7 @@ comptime {
 test "root man page renders conventional sections" {
     const text = comptime cli.man.page(root, &.{}, .{});
 
-    try expectContains(text, ".TH \"tool\" \"1\"");
+    try expectContains(text, ".TH \"TOOL\" \"1\" \"1970-01-01\"");
     try expectContains(text, ".SH NAME");
     try expectContains(text, "tool \\- Short root description");
     try expectContains(text, ".SH SYNOPSIS");
@@ -77,16 +77,16 @@ test "example tree generates root and subcommand pages" {
     const root_page = comptime cli.man.page(root, &.{}, .{});
     const subcommand_page = comptime cli.man.page(root, &.{ "group", "run" }, .{});
 
-    try expectContains(root_page, ".TH \"tool\" \"1\"");
+    try expectContains(root_page, ".TH \"TOOL\" \"1\" \"1970-01-01\"");
     try expectContains(root_page, ".B group");
-    try expectContains(subcommand_page, ".TH \"tool-group-run\" \"1\"");
+    try expectContains(subcommand_page, ".TH \"TOOL-GROUP-RUN\" \"1\" \"1970-01-01\"");
     try expectContains(subcommand_page, ".B tool group run");
 }
 
 test "subcommand man page includes inherited and local flags" {
     const text = comptime cli.man.page(root, &.{ "group", "run" }, .{});
 
-    try expectContains(text, ".TH \"tool-group-run\" \"1\"");
+    try expectContains(text, ".TH \"TOOL-GROUP-RUN\" \"1\" \"1970-01-01\"");
     try expectContains(text, ".B tool group run");
     try expectContains(text, "Leaf long description for the command page.");
     try expectContains(text, "\\-\\-verbose");
@@ -132,7 +132,7 @@ test "options can set title and manual metadata" {
         .manual = "User Commands",
     });
 
-    try expectContains(text, ".TH \"TOOL-RUN\" \"1\" \"\" \"etc-cli 1.0\" \"User Commands\"");
+    try expectContains(text, ".TH \"TOOL-RUN\" \"1\" \"1970-01-01\" \"etc-cli 1.0\" \"User Commands\"");
 }
 
 test "man page can be written to a caller-owned writer" {

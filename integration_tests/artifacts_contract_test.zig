@@ -37,7 +37,7 @@ test "artifact names are deterministic" {
 test "artifact helpers return expected generated content" {
     const man = comptime cli.artifacts.manPage(root, &.{ "group", "run" }, .{});
     try std.testing.expectEqualStrings("tool-group-run.1", man.name);
-    try expectContains(man.data, ".TH \"tool-group-run\" \"1\"");
+    try expectContains(man.data, ".TH \"TOOL-GROUP-RUN\" \"1\" \"1970-01-01\"");
 
     const pages = comptime cli.artifacts.allManPages(root, .{});
     try std.testing.expectEqual(@as(usize, 3), pages.len);

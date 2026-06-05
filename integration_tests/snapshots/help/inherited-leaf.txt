@@ -1,0 +1,11 @@
+group run
+
+  Leaf command
+
+USAGE:
+  group run [flags]
+
+FLAGS:
+  --global, -g          (bool) default=false — Global flag
+  --profile             (string) — Profile name
+  --count, -c           (int) default=1 — Run count

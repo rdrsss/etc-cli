@@ -6,9 +6,9 @@
 //! trees freely compose by slicing/concatenating.
 //!
 //! The handler pointer is type-erased (`?*const anyopaque`) because each
-//! command's typed args struct is different. The dispatcher reconstructs
-//! the typed function pointer at the call site via `ArgsType(root, path)`
-//! and `@ptrCast`.
+//! command's typed args struct is different. The dispatcher passes an opaque
+//! pointer to the parsed args value; handlers recover the typed struct with
+//! `cli.castArgs(root, path, args_ptr)`.
 
 const std = @import("std");
 const flag = @import("flag.zig");
@@ -20,7 +20,8 @@ const meta_mod = @import("meta.zig");
 /// `cmds` and `flags` are sliced so a sub-tree can be defined as a separate
 /// `const` and pulled in by reference (`.cmds = subtree.cmds` etc.).
 ///
-/// `run` is type-erased; use `handler()` below to wrap a typed function.
+/// `run` is type-erased; use `handler()` below to wrap an opaque-pointer
+/// handler.
 pub const Cmd = struct {
     name: []const u8,
     aliases: []const []const u8 = &.{},
@@ -59,18 +60,18 @@ pub const Cmd = struct {
     /// `rest_field` (type `[]const []const u8`, default empty slice).
     ///
     /// The element strings point into argv, but the slice itself is backed by
-    /// a single module-static buffer in the parser. It stays valid until the
-    /// next `parse`/`dispatch`/`run` call, which reuses that buffer. The
-    /// parser is single-threaded by construction: consume (or copy) the rest
-    /// slice before the next CLI invocation, and do not call `parse`
-    /// concurrently.
+    /// a single module-static buffer in the parser. It stays valid only until
+    /// the next `parse`/`dispatch`/`run` call, which may reuse that buffer.
+    /// The parser is single-threaded by construction: consume or copy the
+    /// rest slice before the next CLI invocation, and do not call parser entry
+    /// points concurrently.
     ///
     /// Implies `allow_extra_positionals = true`.
     rest_field: ?[]const u8 = null,
     cmds: []const Cmd = &.{},
-    /// Type-erased pointer to a `fn (ArgsType(root, path_to_this)) anyerror!void`.
-    /// Use `cli.handler(myFn)` to assign. The dispatcher checks the signature
-    /// at comptime via the tree topology.
+    /// Type-erased pointer to a `fn (*const anyopaque) anyerror!void`.
+    /// Use `cli.handler(myFn)` to assign, then recover typed args inside the
+    /// handler with `cli.castArgs(root, path_to_this, args_ptr)`.
     run: ?*const anyopaque = null,
 };
 
@@ -91,13 +92,12 @@ pub const HandlerFn = *const fn (args_ptr: *const anyopaque) anyerror!void;
 /// `@compileError` messages for wrong arity / wrong return type / a
 /// non-opaque parameter that doesn't trigger the dep loop.
 ///
-/// **Important caveat about typed-args drift.** If you write
-/// `fn handle(args: ArgsType(root, …)) anyerror!void` and pass it here,
-/// Zig won't reach the checks in this function — resolving `handle`'s
-/// signature requires `root`, but evaluating `root.cmds[i].run` requires
-/// `&handle`, which requires the signature. The compiler reports this as
-/// `error: dependency loop with length 3` naming all three links. The fix
-/// is the opaque-pointer signature:
+/// **Important caveat about typed-args drift.** Handlers must not take
+/// `ArgsType(root, ...)` directly. Zig won't reach the checks in this
+/// function for that shape: resolving `handle`'s signature requires `root`,
+/// but evaluating `root.cmds[i].run` requires `&handle`, which requires the
+/// signature. The compiler reports this as `error: dependency loop with
+/// length 3` naming all three links. The fix is the opaque-pointer signature:
 ///
 ///   fn handle(args_ptr: *const anyopaque) anyerror!void {
 ///       const args = cli.castArgs(root, &.{ "verb", "subverb" }, args_ptr);

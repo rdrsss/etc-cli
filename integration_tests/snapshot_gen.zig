@@ -10,6 +10,7 @@ const cli = @import("cli");
 const tree = @import("snapshot_tree.zig");
 
 const root = tree.root;
+const inherited_help_root = tree.inherited_help_root;
 
 const Artifact = struct {
     path: []const u8,
@@ -19,6 +20,8 @@ const Artifact = struct {
 const artifacts = [_]Artifact{
     .{ .path = "integration_tests/snapshots/man/tool.1", .data = cli.man.page(root, &.{}, .{}) },
     .{ .path = "integration_tests/snapshots/help/tool.txt", .data = cli.helpText(root, &.{}) },
+    .{ .path = "integration_tests/snapshots/help/inherited-parent.txt", .data = cli.helpText(inherited_help_root, &.{"group"}) },
+    .{ .path = "integration_tests/snapshots/help/inherited-leaf.txt", .data = cli.helpText(inherited_help_root, &.{ "group", "run" }) },
     .{ .path = "integration_tests/snapshots/completion/tool.bash", .data = cli.completion.script(root, .bash) },
     .{ .path = "integration_tests/snapshots/completion/_tool", .data = cli.completion.script(root, .zsh) },
     .{ .path = "integration_tests/snapshots/completion/tool.fish", .data = cli.completion.script(root, .fish) },

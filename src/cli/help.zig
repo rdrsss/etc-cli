@@ -37,7 +37,7 @@ pub fn helpTextWithOptions(
     const target = comptime cmd_mod.findCmd(root, path) orelse @compileError(
         "helpText: no command at path",
     );
-    return comptime renderCmd(target, path, options);
+    return comptime renderCmd(root, target, path, options);
 }
 
 pub fn writeText(
@@ -49,9 +49,15 @@ pub fn writeText(
     try writer.writeAll(comptime helpTextWithOptions(root, path, options));
 }
 
-fn renderCmd(comptime node: cmd_mod.Cmd, comptime path: []const []const u8, comptime options: Options) []const u8 {
+fn renderCmd(
+    comptime root: cmd_mod.Cmd,
+    comptime node: cmd_mod.Cmd,
+    comptime path: []const []const u8,
+    comptime options: Options,
+) []const u8 {
     comptime {
         var out: []const u8 = "";
+        const flags = cmd_mod.collectInheritedFlags(root, path) ++ node.flags;
 
         // Header: "USAGE: <name> [flags] [sub] [positionals]"
         const full_path = renderPath(path, node.name);
@@ -69,7 +75,7 @@ fn renderCmd(comptime node: cmd_mod.Cmd, comptime path: []const []const u8, comp
 
         // Usage line synthesis.
         var usage: []const u8 = "\nUSAGE:\n  " ++ full_path;
-        if (hasVisibleFlags(node.flags, options)) usage = usage ++ " [flags]";
+        if (hasVisibleFlags(flags, options)) usage = usage ++ " [flags]";
         if (hasVisibleCommands(node.cmds, options)) usage = usage ++ " <command>";
         for (node.positionals) |p| {
             if (p.required) {
@@ -100,9 +106,9 @@ fn renderCmd(comptime node: cmd_mod.Cmd, comptime path: []const []const u8, comp
         }
 
         // Flags.
-        if (hasVisibleFlags(node.flags, options)) {
+        if (hasVisibleFlags(flags, options)) {
             out = out ++ "\nFLAGS:\n";
-            for (node.flags) |f| {
+            for (flags) |f| {
                 if (!visibleFlag(f, options)) continue;
                 out = out ++ "  " ++ renderFlagLine(f, options) ++ "\n";
             }
@@ -273,4 +279,68 @@ test "helpText for leaf includes flags and positionals" {
     try std.testing.expect(std.mem.indexOf(u8, text, "required") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, "<scope>") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, "optional") != null);
+}
+
+const inherited_root = cmd_mod.Cmd{
+    .name = "tool",
+    .flags = &.{
+        .{ .long = "--root", .desc = "Root flag", .kind = .bool },
+    },
+    .cmds = &.{
+        .{
+            .name = "parent",
+            .flags = &.{
+                .{ .long = "--parent", .desc = "Parent flag", .kind = .string },
+            },
+            .cmds = &.{
+                .{
+                    .name = "leaf",
+                    .flags = &.{
+                        .{ .long = "--leaf", .desc = "Leaf flag", .kind = .int },
+                    },
+                },
+            },
+        },
+    },
+};
+
+test "helpText renders inherited flags before local flags" {
+    const parent = comptime helpText(inherited_root, &.{"parent"});
+    try std.testing.expect(std.mem.indexOf(u8, parent, "USAGE:\n  parent [flags] <command>") != null);
+    const parent_root_idx = std.mem.indexOf(u8, parent, "--root").?;
+    const parent_local_idx = std.mem.indexOf(u8, parent, "--parent").?;
+    try std.testing.expect(parent_root_idx < parent_local_idx);
+
+    const leaf = comptime helpText(inherited_root, &.{ "parent", "leaf" });
+    try std.testing.expect(std.mem.indexOf(u8, leaf, "USAGE:\n  parent leaf [flags]") != null);
+    const root_idx = std.mem.indexOf(u8, leaf, "--root").?;
+    const parent_idx = std.mem.indexOf(u8, leaf, "--parent").?;
+    const leaf_idx = std.mem.indexOf(u8, leaf, "--leaf").?;
+    try std.testing.expect(root_idx < parent_idx);
+    try std.testing.expect(parent_idx < leaf_idx);
+}
+
+const hidden_only_root = cmd_mod.Cmd{
+    .name = "tool",
+    .flags = &.{
+        .{ .long = "--hidden-root", .hidden = true, .kind = .bool },
+    },
+    .cmds = &.{
+        .{
+            .name = "leaf",
+        },
+    },
+};
+
+test "helpText omits flags section and usage marker when only hidden inherited flags apply" {
+    const text = comptime helpText(hidden_only_root, &.{"leaf"});
+    try std.testing.expect(std.mem.indexOf(u8, text, "USAGE:\n  leaf\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "[flags]") == null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "FLAGS:") == null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "--hidden-root") == null);
+
+    const hidden_text = comptime helpTextWithOptions(hidden_only_root, &.{"leaf"}, .{ .include_hidden = true });
+    try std.testing.expect(std.mem.indexOf(u8, hidden_text, "USAGE:\n  leaf [flags]\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, hidden_text, "FLAGS:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, hidden_text, "--hidden-root") != null);
 }

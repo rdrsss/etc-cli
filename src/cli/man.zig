@@ -94,14 +94,15 @@ fn renderPage(
 ) []const u8 {
     comptime {
         const name = pageName(root, path);
-        const title = options.title orelse name;
+        const title = options.title orelse roffTitle(name);
+        const date = roffDate(options.date);
         const command = commandPath(root, path);
         const desc = if (node.desc.len > 0) node.desc else "";
         const flags = flagsFor(root, node, path, options.include_inherited_flags);
 
         var out: []const u8 = "";
         out = out ++ ".TH \"" ++ roffQuoted(title) ++ "\" \"" ++ std.fmt.comptimePrint("{d}", .{options.section}) ++ "\"";
-        out = out ++ " \"" ++ roffQuoted(options.date) ++ "\"";
+        out = out ++ " \"" ++ roffQuoted(date) ++ "\"";
         out = out ++ " \"" ++ roffQuoted(options.source) ++ "\"";
         out = out ++ " \"" ++ roffQuoted(options.manual) ++ "\"\n";
 
@@ -128,7 +129,7 @@ fn renderPage(
         const long_desc = if (node.long_desc.len > 0) node.long_desc else node.desc;
         if (long_desc.len > 0) {
             out = out ++ ".SH DESCRIPTION\n";
-            out = out ++ ".PP\n" ++ roff(long_desc) ++ "\n";
+            out = out ++ roff(long_desc) ++ "\n";
         }
 
         if (hasVisibleCommands(node.cmds, options)) {
@@ -175,7 +176,10 @@ fn renderPage(
 
         if (node.doc.notes.len > 0) {
             out = out ++ ".SH NOTES\n";
-            for (node.doc.notes) |note| out = out ++ ".PP\n" ++ roff(note) ++ "\n";
+            for (node.doc.notes, 0..) |note, idx| {
+                if (idx > 0) out = out ++ ".PP\n";
+                out = out ++ roff(note) ++ "\n";
+            }
         }
 
         if (node.doc.files.len > 0) {
@@ -192,18 +196,27 @@ fn renderPage(
 
         if (node.doc.bugs.len > 0) {
             out = out ++ ".SH BUGS\n";
-            for (node.doc.bugs) |bug| out = out ++ ".PP\n" ++ roff(bug) ++ "\n";
+            for (node.doc.bugs, 0..) |bug, idx| {
+                if (idx > 0) out = out ++ ".PP\n";
+                out = out ++ roff(bug) ++ "\n";
+            }
         }
 
         if (node.doc.authors.len > 0) {
             out = out ++ ".SH AUTHORS\n";
-            for (node.doc.authors) |author| out = out ++ ".PP\n" ++ roff(author) ++ "\n";
+            for (node.doc.authors, 0..) |author, idx| {
+                if (idx > 0) out = out ++ ".PP\n";
+                out = out ++ roff(author) ++ "\n";
+            }
         }
 
         if (node.doc.license.len > 0 or node.doc.copyright.len > 0) {
             out = out ++ ".SH COPYRIGHT\n";
-            if (node.doc.copyright.len > 0) out = out ++ ".PP\n" ++ roff(node.doc.copyright) ++ "\n";
-            if (node.doc.license.len > 0) out = out ++ ".PP\nLicense: " ++ roff(node.doc.license) ++ "\n";
+            if (node.doc.copyright.len > 0) out = out ++ roff(node.doc.copyright) ++ "\n";
+            if (node.doc.license.len > 0) {
+                if (node.doc.copyright.len > 0) out = out ++ ".PP\n";
+                out = out ++ "License: " ++ roff(node.doc.license) ++ "\n";
+            }
         }
 
         if (node.doc.see_also.len > 0) {
@@ -357,6 +370,22 @@ fn commandPath(comptime root: cmd_mod.Cmd, comptime path: []const []const u8) []
     }
 }
 
+fn roffTitle(comptime text: []const u8) []const u8 {
+    comptime {
+        var out: []const u8 = "";
+        for (text) |c| {
+            out = out ++ &[_]u8{std.ascii.toUpper(c)};
+        }
+        return out;
+    }
+}
+
+fn roffDate(comptime text: []const u8) []const u8 {
+    // `mandoc -Tlint` warns on an empty date. Keep default output reproducible;
+    // release tooling can pass the package date when it has one.
+    return if (text.len > 0) text else "1970-01-01";
+}
+
 fn roffOption(comptime text: []const u8) []const u8 {
     comptime {
         var out: []const u8 = "";
@@ -458,7 +487,7 @@ const test_root = cmd_mod.Cmd{
 
 test "page renders root sections" {
     const text = comptime page(test_root, &.{}, .{});
-    try std.testing.expect(std.mem.indexOf(u8, text, ".TH \"tool\" \"1\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, ".TH \"TOOL\" \"1\" \"1970-01-01\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, ".SH NAME") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, "tool \\- Test tool") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, ".SH COMMANDS") != null);
@@ -474,7 +503,7 @@ test "page renders inherited flags for leaf commands" {
 
 test "page accepts sections other than 1" {
     const text = comptime page(test_root, &.{}, .{ .section = 8 });
-    try std.testing.expect(std.mem.indexOf(u8, text, ".TH \"tool\" \"8\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, ".TH \"TOOL\" \"8\" \"1970-01-01\"") != null);
 }
 
 test "page omits empty optional sections" {

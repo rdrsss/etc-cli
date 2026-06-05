@@ -28,9 +28,9 @@ const root = cli.Cmd{
         },
         .{
             .name = "quote",
-            .desc = "Say 'hi': then \"bye\"",
+            .desc = "Say 'hi': then \"bye\" with $HOME and `pwd`",
             .flags = &.{
-                .{ .long = "--path", .desc = "Path 'quoted': and \"double\"", .kind = .string },
+                .{ .long = "--path", .desc = "Path 'quoted': and \"double\" with $HOME and `pwd`", .kind = .string },
             },
         },
     },
@@ -53,6 +53,51 @@ test "parent and leaf help render the right descriptions and command structure" 
     const leaf_help = comptime cli.helpText(root, &.{ "group", "run" });
     try std.testing.expect(std.mem.indexOf(u8, leaf_help, "Leaf long description") != null);
     try std.testing.expect(std.mem.indexOf(u8, leaf_help, "--name") != null);
+}
+
+test "parent and leaf help include inherited flags in deterministic order" {
+    const parent_help = comptime cli.helpText(root, &.{"group"});
+    try std.testing.expect(std.mem.indexOf(u8, parent_help, "USAGE:\n  group [flags] <command>\n") != null);
+    const parent_root_flag = std.mem.indexOf(u8, parent_help, "--verbose").?;
+    const parent_local_flag = std.mem.indexOf(u8, parent_help, "--mode").?;
+    try std.testing.expect(parent_root_flag < parent_local_flag);
+
+    const leaf_help = comptime cli.helpText(root, &.{ "group", "run" });
+    try std.testing.expect(std.mem.indexOf(u8, leaf_help, "USAGE:\n  group run [flags]\n") != null);
+    const leaf_root_flag = std.mem.indexOf(u8, leaf_help, "--verbose").?;
+    const leaf_parent_flag = std.mem.indexOf(u8, leaf_help, "--mode").?;
+    const leaf_local_flag = std.mem.indexOf(u8, leaf_help, "--name").?;
+    try std.testing.expect(leaf_root_flag < leaf_parent_flag);
+    try std.testing.expect(leaf_parent_flag < leaf_local_flag);
+}
+
+test "help without visible flags keeps compact usage and omits flags section" {
+    const hidden_only_root = cli.Cmd{
+        .name = "tool",
+        .flags = &.{
+            .{ .long = "--hidden-root", .desc = "Hidden root flag", .kind = .bool, .hidden = true },
+        },
+        .cmds = &.{
+            .{
+                .name = "visible",
+                .desc = "Visible command",
+            },
+            .{
+                .name = "elsewhere",
+                .desc = "Sibling with hidden flag",
+                .flags = &.{
+                    .{ .long = "--hidden-sibling", .desc = "Hidden sibling flag", .kind = .bool, .hidden = true },
+                },
+            },
+        },
+    };
+
+    const help = comptime cli.helpText(hidden_only_root, &.{"visible"});
+    try std.testing.expect(std.mem.indexOf(u8, help, "USAGE:\n  visible\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, help, "[flags]") == null);
+    try std.testing.expect(std.mem.indexOf(u8, help, "FLAGS:") == null);
+    try std.testing.expect(std.mem.indexOf(u8, help, "--hidden-root") == null);
+    try std.testing.expect(std.mem.indexOf(u8, help, "--hidden-sibling") == null);
 }
 
 test "help supports compact width and writer output" {
@@ -91,10 +136,10 @@ test "fish completion documents owned flags at each path" {
 
 test "completion escapes shell-sensitive descriptions" {
     const zsh = comptime cli.completion.script(root, .zsh);
-    try std.testing.expect(std.mem.indexOf(u8, zsh, "\"quote:Say 'hi'\\: then \\\"bye\\\"\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, zsh, "\"--path:Path 'quoted'\\: and \\\"double\\\"\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh, "\"quote:Say 'hi'\\: then \\\"bye\\\" with \\$HOME and \\`pwd\\`\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh, "\"--path:Path 'quoted'\\: and \\\"double\\\" with \\$HOME and \\`pwd\\`\"") != null);
 
     const fish = comptime cli.completion.script(root, .fish);
-    try std.testing.expect(std.mem.indexOf(u8, fish, "-a 'quote' -d 'Say \\'hi\\': then \"bye\"'") != null);
-    try std.testing.expect(std.mem.indexOf(u8, fish, "-l 'path' -d 'Path \\'quoted\\': and \"double\"'") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish, "-a 'quote' -d 'Say \\'hi\\': then \"bye\" with $HOME and `pwd`'") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish, "-l 'path' -d 'Path \\'quoted\\': and \"double\" with $HOME and `pwd`'") != null);
 }

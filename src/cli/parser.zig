@@ -3,7 +3,12 @@
 //! `parse(root, path, argv)` walks argv against the tree starting at `root`,
 //! returns a `Result` carrying the matched command path and a typed
 //! `ArgsType` for whichever leaf matched (via a tagged union over all
-//! leaves). Strings in the result are slices into argv; no allocation.
+//! leaves). Scalar strings in the result are slices into argv; no allocation.
+//! Slice fields backed by parser module-static arrays (`rest_field`,
+//! repeatable/list flags, and help paths) are valid only until the next
+//! `parse`/`dispatch` call. The parser does not provide a reentrant or
+//! thread-safe result-buffer contract; callers that need longer-lived results
+//! must copy those slices before invoking the parser again.
 //!
 //! `dispatch(root, argv)` is the callback-mode wrapper: parse + invoke the
 //! matched leaf's `run` handler (cast from the type-erased pointer).
@@ -25,16 +30,18 @@ const Positional = flag_mod.Positional;
 
 /// Module-static backing buffer for rest-positional capture (the leaf's
 /// `rest_field`). Lives at module scope so the slice returned in Args stays
-/// valid after parseLeaf returns. Single-threaded by construction: each
-/// `parse`/`dispatch` call consumes its rest before the next CLI invocation.
+/// valid after parseLeaf returns. Single-threaded by construction: callers
+/// must consume or copy the slice before the next `parse`/`dispatch`
+/// invocation, which may overwrite it.
 /// 256 is well past any realistic argv positional count.
 var rest_buf: [256][]const u8 = undefined;
 
 /// Module-static backing store for repeatable (`list`) flag values. Each list
 /// flag in the active leaf gets a row (assigned by its comptime ordinal among
 /// list flags); accumulated values land in that row. Like `rest_buf`, the
-/// returned slices stay valid until the next parse, which resets the counts.
-/// Single-threaded by construction. Caps are generous for real CLIs.
+/// returned slices stay valid only until the next parser invocation, which
+/// resets the counts and may overwrite values. Single-threaded by
+/// construction. Caps are generous for real CLIs.
 const max_list_flags = 16;
 const max_list_items = 128;
 var list_buf: [max_list_flags][max_list_items][]const u8 = undefined;
@@ -44,10 +51,12 @@ var list_counts: [max_list_flags]usize = .{0} ** max_list_flags;
 /// `.help` result. Like `rest_buf`, it lives at module scope so the slice
 /// stays valid after `parseImpl` returns — its elements are comptime
 /// command-name literals, so only the array (not the strings) needs the
-/// static home. Single-threaded by construction: each parse consumes its help
-/// path before the next CLI invocation. 256 is well past any realistic tree
-/// depth.
+/// static home. Single-threaded by construction: callers must consume or copy
+/// the path before the next `parse`/`dispatch` invocation, which may overwrite
+/// it. 256 is well past any realistic tree depth.
 var help_path_buf: [256][]const u8 = undefined;
+
+const max_tail_tokens = 512;
 
 /// Copy the resolved path into the module-static buffer and return it as a
 /// `.help` result. Returning a slice into `parseImpl`'s stack-local
@@ -184,6 +193,20 @@ fn pathsEqual(a: []const []const u8, b: []const []const u8) bool {
     return true;
 }
 
+fn appendTail(
+    tail_buf: [][]const u8,
+    tail_len: *usize,
+    tok: []const u8,
+    err_out: *err_mod.Detail,
+) err_mod.Parse!void {
+    if (tail_len.* >= tail_buf.len) {
+        err_out.* = .{ .kind = err_mod.Parse.UnexpectedArgument, .arg = "too many tokens" };
+        return err_mod.Parse.UnexpectedArgument;
+    }
+    tail_buf[tail_len.*] = tok;
+    tail_len.* += 1;
+}
+
 fn invokeMatch(
     comptime root: Cmd,
     result_union: ResultUnion(root),
@@ -246,15 +269,9 @@ fn parseImpl(
     // into tail_buf. We need the two-buffer split because global flags can
     // appear before, between, or after subcommand tokens — but a subcommand
     // is only recognized when its parent node lists it.
-    // Tail buffer is heap-free: capped at argv.len because we copy a
-    // subset of argv entries. Hard cap of 256 tokens is well past any
-    // realistic CLI invocation; exceeding it is a configuration smell.
-    const tail_cap = 256;
-    if (argv.len > tail_cap) {
-        err_out.* = .{ .kind = err_mod.Parse.UnexpectedArgument, .arg = "too many tokens" };
-        return err_mod.Parse.UnexpectedArgument;
-    }
-    var tail_buf: [tail_cap][]const u8 = undefined;
+    // Tail buffer is heap-free. The cap applies to copied tail tokens, not
+    // argv length, so deeply nested command names do not count against it.
+    var tail_buf: [max_tail_tokens][]const u8 = undefined;
     var tail_len: usize = 0;
 
     var current: Cmd = root;
@@ -282,22 +299,19 @@ fn parseImpl(
                 if (matched) continue;
             }
             // Not a subcommand → positional/passthrough token for the leaf.
-            tail_buf[tail_len] = tok;
-            tail_len += 1;
+            try appendTail(tail_buf[0..], &tail_len, tok, err_out);
             continue;
         }
 
         // Flag-shaped token.
         if (std.mem.eql(u8, tok, "--")) {
-            tail_buf[tail_len] = tok;
-            tail_len += 1;
+            try appendTail(tail_buf[0..], &tail_len, tok, err_out);
             passthrough = true;
             continue;
         }
 
         // Help is handled below; route it through tail like any other flag.
-        tail_buf[tail_len] = tok;
-        tail_len += 1;
+        try appendTail(tail_buf[0..], &tail_len, tok, err_out);
 
         // If the flag belongs to a known scope and is non-bool, swallow
         // its value so it doesn't get mistaken for a subcommand on the
@@ -305,8 +319,7 @@ fn parseImpl(
         if (flagWantsValue(ancestors[0 .. path_len + 1], tok)) {
             i += 1;
             if (i < argv.len) {
-                tail_buf[tail_len] = argv[i];
-                tail_len += 1;
+                try appendTail(tail_buf[0..], &tail_len, argv[i], err_out);
             }
         }
     }
@@ -1201,7 +1214,12 @@ fn validatePort(v: []const u8) ?[]const u8 {
 const validator_root = Cmd{
     .name = "tool",
     .cmds = &.{
-        .{ .name = "serve", .flags = &.{ .{ .long = "--port", .kind = .int, .validator = validatePort } } },
+        .{
+            .name = "serve",
+            .flags = &.{
+                .{ .long = "--port", .kind = .int, .validator = validatePort },
+            },
+        },
     },
 };
 

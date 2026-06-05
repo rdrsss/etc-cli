@@ -119,6 +119,7 @@ fn argvHasFlag(argv: []const []const u8, comptime f: anytype) bool {
         }
         if (f.short) |s| {
             if (tok.len == 2 and tok[0] == '-' and tok[1] == s) return true;
+            if (tok.len > 2 and tok[0] == '-' and tok[1] == s) return true;
         }
     }
     return false;

@@ -88,8 +88,9 @@ const code = try cli.run(root, .{
 
 Runner policy is deliberately narrow: `--help`, no-handler help, `--version`,
 and `--about` write stdout and return `0`; parse errors write stderr and return
-`2`; handler errors write stderr and return `1`. Environment fallback and
-deprecation warnings are not runner-owned today.
+`2`; handler errors write stderr and return `1`. The runner also owns the
+narrow `Flag.env` fallback described below; deprecation warnings are reserved
+for a later policy.
 
 ## Aliases and Visibility
 
@@ -131,9 +132,15 @@ bundles:
 Attached short values are accepted for non-bool short flags, for example
 `-nname` and `-c3`. Short bundles are only accepted when every bundled short
 flag is boolean; ambiguous forms fail as unknown flags. Scalar flags still reject
-duplicates. Custom validators, flag groups, list-valued flags, and positional
-defaults are deferred API work; use strings plus application validation for
-those cases today.
+duplicates.
+
+Flags and positionals can attach a custom `validator` that receives the raw
+argument string after kind routing; return `null` to accept it, or a message to
+reject it as `InvalidValue`. List-valued flags are supported for `.string`,
+`.path`, and `.choice` values by setting `.list = true`; they may repeat and
+generate `[]const []const u8` fields with an empty default. Optional
+positionals can declare defaults, which fill the generated field when the slot
+is omitted. Flag groups are still deferred API work.
 
 Beyond `.bool`, `.string`, and `.int`, flags and positionals support `.float`
 (`f64`), `.duration` (human strings like `10m`/`500ms`/`1h` parsed to
@@ -176,11 +183,11 @@ const code = try cli.run(root, .{
 });
 ```
 
-For each global (root) non-bool flag with `.env` set and absent from argv, the
-runner fills the value from the environment before parsing, so precedence is
-`argv` > env > declared default > required-flag error. Leaf-specific and bool
-env flags are not yet covered by the fallback; for those, pass
-environment-derived values explicitly.
+For each global (root) non-bool scalar flag with `.env` set and absent from
+argv, the runner fills the value from the environment before parsing, so
+precedence is `argv` > env > declared default > required-flag error.
+Leaf-specific, bool, and list env flags are not yet covered by the fallback;
+for those, pass environment-derived values explicitly.
 
 ## Completion Scripts
 
@@ -340,9 +347,10 @@ That command runs source-local unit tests, downstream-style import tests for bot
 tests, man-page generation tests, schema generation tests, and compile-fail
 validation fixtures. Snapshot contract tests pin representative help, man,
 completion, and schema output. If `mandoc` is installed locally, the test step
-also runs `mandoc -Tlint` over committed man-page snapshots; otherwise that lint
-gate prints a skip message and succeeds. Completion snapshots are linted with
-`bash -n`, `zsh -n`, and `fish -n` when those shells are installed.
+also runs strict `mandoc -Tlint` over committed man-page snapshots; any warning
+or error fails the test step. Otherwise that lint gate prints a skip message and
+succeeds. Completion snapshots are linted with `bash -n`, `zsh -n`, and
+`fish -n` when those shells are installed.
 
 See `examples/basic.zig` for a complete command tree and app-runner setup. CI
 matrix guidance lives in `docs/ci.md`; release and API-versioning policy lives

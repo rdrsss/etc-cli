@@ -1,6 +1,9 @@
 const std = @import("std");
 const etc_cli = @import("etc_cli");
 
+const PublicFlagGroup = etc_cli.FlagGroup;
+const PublicFlagGroupMode = etc_cli.FlagGroupMode;
+
 const root = etc_cli.Cmd{
     .name = "tool",
     .flags = &.{
@@ -13,6 +16,14 @@ const root = etc_cli.Cmd{
             .flags = &.{
                 .{ .long = "--name", .short = 'n', .kind = .string, .required = true },
                 .{ .long = "--count", .short = 'c', .kind = .int, .default = .{ .int = 1 } },
+            },
+            .flag_groups = &.{
+                PublicFlagGroup{
+                    .name = "run-selection",
+                    .mode = PublicFlagGroupMode.required_one,
+                    .flags = &.{ "--verbose", "--name" },
+                    .desc = "Select a run input.",
+                },
             },
             .positionals = &.{
                 .{ .name = "target", .kind = .string, .required = false },
@@ -41,6 +52,9 @@ test "consumer can import etc_cli module name and parse a command tree" {
     try std.testing.expectEqualStrings("consumer", args.name);
     try std.testing.expectEqual(@as(i64, 1), args.count);
     try std.testing.expect(args.target == null);
+    try std.testing.expectEqual(@as(usize, 1), root.cmds[0].flag_groups.len);
+    try std.testing.expectEqual(PublicFlagGroupMode.required_one, root.cmds[0].flag_groups[0].mode);
+    try std.testing.expectEqualStrings("--verbose", root.cmds[0].flag_groups[0].flags[0]);
 
     const help = comptime etc_cli.helpText(root, &.{"run"});
     try std.testing.expect(std.mem.indexOf(u8, help, "--count") != null);

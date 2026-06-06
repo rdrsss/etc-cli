@@ -26,6 +26,7 @@ const duration_mod = @import("duration.zig");
 
 const Cmd = cmd_mod.Cmd;
 const Flag = flag_mod.Flag;
+const FlagGroup = flag_mod.FlagGroup;
 const Positional = flag_mod.Positional;
 
 /// Module-static backing buffer for rest-positional capture (the leaf's
@@ -57,6 +58,8 @@ var list_counts: [max_list_flags]usize = .{0} ** max_list_flags;
 var help_path_buf: [256][]const u8 = undefined;
 
 const max_tail_tokens = 512;
+const max_group_error_flags = 256;
+var group_error_flags_buf: [max_group_error_flags][]const u8 = undefined;
 
 /// Copy the resolved path into the module-static buffer and return it as a
 /// `.help` result. Returning a slice into `parseImpl`'s stack-local
@@ -117,6 +120,16 @@ fn pathToTag(comptime path: []const []const u8) []const u8 {
         }
         const final = buf;
         return &final;
+    }
+}
+
+fn commandPathString(comptime root_name: []const u8, comptime path: []const []const u8) []const u8 {
+    comptime {
+        var out: []const u8 = root_name;
+        for (path) |seg| {
+            out = out ++ " " ++ seg;
+        }
+        return out;
     }
 }
 
@@ -345,14 +358,17 @@ fn parseImpl(
             const Args = comptime cmd_mod.ArgsType(root, leaf.path);
             const all_flags = comptime cmd_mod.collectInheritedFlags(root, leaf.path) ++ leaf.cmd.flags;
             const tag_name = comptime pathToTag(leaf.path);
+            const cmd_path = comptime commandPathString(root.name, leaf.path);
             const args = parseLeaf(
                 Args,
                 all_flags,
+                leaf.cmd.flag_groups,
                 leaf.cmd.positionals,
                 tail_buf[0..tail_len],
                 leaf.cmd.allow_unknown_flags,
                 leaf.cmd.allow_extra_positionals or leaf.cmd.rest_field != null,
                 leaf.cmd.rest_field,
+                cmd_path,
                 err_out,
             ) catch |e| return e;
             var u: ResultUnion(root) = undefined;
@@ -435,11 +451,13 @@ fn depthWalk(comptime node: Cmd, comptime current: usize, comptime max: *usize) 
 fn parseLeaf(
     comptime Args: type,
     comptime all_flags: []const Flag,
+    comptime flag_groups: []const FlagGroup,
     comptime positionals: []const Positional,
     tail: []const []const u8,
     allow_unknown_flags: bool,
     allow_extra_positionals: bool,
     comptime rest_field: ?[]const u8,
+    comptime cmd_path: []const u8,
     err_out: *err_mod.Detail,
 ) err_mod.Parse!Args {
     // Initialize args with field defaults where available; required fields
@@ -628,6 +646,8 @@ fn parseLeaf(
         }
     }
 
+    try enforceFlagGroups(all_flags, flag_groups, seen, cmd_path, err_out);
+
     // Required-positional check.
     inline for (positionals, 0..) |p, idx| {
         if (p.required and idx >= pos_filled) {
@@ -642,6 +662,59 @@ fn parseLeaf(
     }
 
     return args;
+}
+
+fn enforceFlagGroups(
+    comptime all_flags: []const Flag,
+    comptime flag_groups: []const FlagGroup,
+    seen: [all_flags.len]bool,
+    comptime cmd_path: []const u8,
+    err_out: *err_mod.Detail,
+) err_mod.Parse!void {
+    inline for (flag_groups) |group| {
+        var selected_count: usize = 0;
+        inline for (group.flags) |member| {
+            const idx = comptime flagIndexByLong(all_flags, member) orelse
+                @compileError("parser: flag group member was not validated: " ++ member);
+            if (seen[idx]) {
+                if (selected_count >= group_error_flags_buf.len) {
+                    err_out.* = .{
+                        .kind = err_mod.Parse.FlagGroupViolation,
+                        .group = group.name,
+                        .group_mode = group.mode,
+                        .group_flags = group.flags,
+                        .cmd_path = cmd_path,
+                    };
+                    return err_mod.Parse.FlagGroupViolation;
+                }
+                group_error_flags_buf[selected_count] = all_flags[idx].long;
+                selected_count += 1;
+            }
+        }
+
+        const violation = switch (group.mode) {
+            .mutually_exclusive => selected_count > 1,
+            .required_one => selected_count == 0,
+            .required_exactly_one => selected_count != 1,
+        };
+        if (violation) {
+            err_out.* = .{
+                .kind = err_mod.Parse.FlagGroupViolation,
+                .group = group.name,
+                .group_mode = group.mode,
+                .group_flags = if (selected_count == 0) group.flags else group_error_flags_buf[0..selected_count],
+                .cmd_path = cmd_path,
+            };
+            return err_mod.Parse.FlagGroupViolation;
+        }
+    }
+}
+
+fn flagIndexByLong(comptime all_flags: []const Flag, comptime long: []const u8) ?usize {
+    inline for (all_flags, 0..) |f, idx| {
+        if (std.mem.eql(u8, f.long, long)) return idx;
+    }
+    return null;
 }
 
 const MatchedFlag = struct {

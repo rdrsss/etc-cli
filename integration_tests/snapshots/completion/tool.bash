@@ -2,19 +2,9 @@
 # Source this file or place it in a directory loaded by bash-completion.
 
 _tool() {
-    local cur prev path cmds flags values i
+    local cur prev path cmds flags values i value_prefix
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    case "$prev" in
-        --color)
-            COMPREPLY=( $(compgen -W "auto always never" -- "$cur") ); return ;;
-        --format)
-            COMPREPLY=( $(compgen -W "json text yaml" -- "$cur") ); return ;;
-        --config)
-            COMPREPLY=( $(compgen -f -- "$cur") ); return ;;
-        --host)
-            COMPREPLY=( $(compgen -W "$("${COMP_WORDS[0]}" __complete --host "$cur")" -- "$cur") ); return ;;
-    esac
 
     path=""
     for (( i=1; i<COMP_CWORD; i++ )); do
@@ -61,6 +51,60 @@ _tool() {
                 ;;
         esac
     done
+    case "$path" in
+        "")
+            case "$cur" in
+                --color=*)
+                    value_prefix="${cur#*=}"
+                    COMPREPLY=( $(compgen -W "auto always never" -- "$value_prefix") )
+                    COMPREPLY=( "${COMPREPLY[@]/#/${cur%%=*}=}" )
+                    return ;;
+            esac
+            case "$prev" in
+                --color)
+                    COMPREPLY=( $(compgen -W "auto always never" -- "$cur") ); return ;;
+            esac
+            ;;
+        "run")
+            case "$cur" in
+                --color=*)
+                    value_prefix="${cur#*=}"
+                    COMPREPLY=( $(compgen -W "auto always never" -- "$value_prefix") )
+                    COMPREPLY=( "${COMPREPLY[@]/#/${cur%%=*}=}" )
+                    return ;;
+                --format=*)
+                    value_prefix="${cur#*=}"
+                    COMPREPLY=( $(compgen -W "json text yaml" -- "$value_prefix") )
+                    COMPREPLY=( "${COMPREPLY[@]/#/${cur%%=*}=}" )
+                    return ;;
+                -f*)
+                    value_prefix="${cur:2}"
+                    COMPREPLY=( $(compgen -W "json text yaml" -- "$value_prefix") )
+                    COMPREPLY=( "${COMPREPLY[@]/#/${cur:0:2}}" )
+                    return ;;
+                --config=*)
+                    value_prefix="${cur#*=}"
+                    COMPREPLY=( $(compgen -f -- "$value_prefix") )
+                    COMPREPLY=( "${COMPREPLY[@]/#/${cur%%=*}=}" )
+                    return ;;
+                --host=*)
+                    value_prefix="${cur#*=}"
+                    COMPREPLY=( $(compgen -W "$("${COMP_WORDS[0]}" __complete --host "$value_prefix")" -- "$value_prefix") )
+                    COMPREPLY=( "${COMPREPLY[@]/#/${cur%%=*}=}" )
+                    return ;;
+            esac
+            case "$prev" in
+                --color)
+                    COMPREPLY=( $(compgen -W "auto always never" -- "$cur") ); return ;;
+                --format|-f)
+                    COMPREPLY=( $(compgen -W "json text yaml" -- "$cur") ); return ;;
+                --config)
+                    COMPREPLY=( $(compgen -f -- "$cur") ); return ;;
+                --host)
+                    COMPREPLY=( $(compgen -W "$("${COMP_WORDS[0]}" __complete --host "$cur")" -- "$cur") ); return ;;
+            esac
+            ;;
+    esac
 
     case "$path" in
         "")

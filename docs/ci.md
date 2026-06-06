@@ -27,8 +27,8 @@ on every push to `master`, every pull request, and every `v*` tag.
 
 The test step compiles the package, downstream import fixtures, integration
 tests, compile-fail validation fixtures, generated artifact snapshots,
-completion linting when shells are available, strict man-page linting when
-`mandoc` is available, parser property tests, and the example executable.
+completion snapshot coverage and linting, strict man-page linting when `mandoc`
+is available, parser property tests, and the example executable.
 
 Optional local tools:
 
@@ -36,6 +36,9 @@ Optional local tools:
   error fails the test step.
 - `bash`, `zsh`, and `fish` enable shell-specific completion syntax checks.
 
-Absence of optional tools should skip that specific lint and keep the core test
-matrix green. The committed CI workflow installs `mandoc`, `zsh`, and `fish`
-where available, so those installed-tool lints are real CI gates.
+Absence of optional tools should skip that specific syntax lint and keep the
+core test matrix green. Completion snapshot presence is not optional:
+`scripts/completion_lint.sh` fails if bash, zsh, or fish snapshot patterns match
+zero committed files, even when the shell binary is absent. The committed CI
+workflow installs `mandoc`, `zsh`, and `fish` where available, so those
+installed-tool lints are real CI gates.

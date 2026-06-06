@@ -11,3 +11,6 @@ COMMANDS:
 FLAGS:
   --verbose, -v         (bool) default=false — Verbose output
   --color               (auto|always|never) default="auto" — When to colorize output
+
+FLAG GROUPS:
+  display             at least one required: --verbose, --color — Choose at least one display control.

@@ -11,13 +11,19 @@ const root = cli.Cmd{
         .{
             .name = "run",
             .flags = &.{
-                .{ .long = "--mode", .kind = .string, .completion = cli.Completion.valueChoices(&.{ "json", "text" }) },
-                .{ .long = "--input", .kind = .string, .completion = cli.Completion.files },
-                .{ .long = "--directory", .kind = .string, .completion = cli.Completion.directories },
-                .{ .long = "--host", .kind = .string, .completion = cli.Completion.dynamic(completeHosts) },
+                .{ .long = "--mode", .short = 'm', .kind = .string, .completion = cli.Completion.valueChoices(&.{ "json", "text" }) },
+                .{ .long = "--input", .short = 'i', .kind = .string, .completion = cli.Completion.files },
+                .{ .long = "--directory", .short = 'd', .kind = .string, .completion = cli.Completion.directories },
+                .{ .long = "--host", .short = 'H', .kind = .string, .completion = cli.Completion.dynamic(completeHosts) },
             },
             .positionals = &.{
                 .{ .name = "target", .completion = cli.Completion.valueChoices(&.{ "alpha", "beta" }) },
+            },
+        },
+        .{
+            .name = "build",
+            .flags = &.{
+                .{ .long = "--profile", .short = 'p', .kind = .string, .completion = cli.Completion.valueChoices(&.{ "debug", "release" }) },
             },
         },
     },
@@ -37,22 +43,32 @@ fn completeHosts(prefix: []const u8) []const []const u8 {
 
 test "static flag and positional value completions render for bash zsh and fish" {
     const bash = comptime cli.completion.script(root, .bash);
-    try expectContains(bash, "--mode)");
+    try expectContains(bash, "--mode=*)");
+    try expectContains(bash, "-m*)");
+    try expectContains(bash, "COMPREPLY=( \"${COMPREPLY[@]/#/${cur%%=*}=}\" )");
+    try expectContains(bash, "COMPREPLY=( \"${COMPREPLY[@]/#/${cur:0:2}}\" )");
+    try expectContains(bash, "--mode|-m)");
     try expectContains(bash, "json text");
     try expectContains(bash, "compgen -f");
     try expectContains(bash, "compgen -d");
     try expectContains(bash, "alpha beta");
 
     const zsh = comptime cli.completion.script(root, .zsh);
-    try expectContains(zsh, "--mode)");
+    try expectContains(zsh, "--mode=*)");
+    try expectContains(zsh, "-m*)");
+    try expectContains(zsh, "compset -P \"${cur%%=*}=\"");
+    try expectContains(zsh, "compset -P \"-m\"");
+    try expectContains(zsh, "$(\"$words[1]\" __complete --host \"$value_prefix\")");
+    try expectContains(zsh, "--mode|-m)");
     try expectContains(zsh, "_values 'values' \"json\" \"text\"");
     try expectContains(zsh, "_files -/");
     try expectContains(zsh, "\"alpha\" \"beta\"");
 
     const fish = comptime cli.completion.script(root, .fish);
-    try expectContains(fish, "-l 'mode' -a 'json text'");
-    try expectContains(fish, "-l 'input'");
+    try expectContains(fish, "-l 'mode' -s m -a 'json text'");
+    try expectContains(fish, "-l 'input' -s i");
     try expectContains(fish, "__fish_complete_directories");
+    try expectContains(fish, "-l 'host' -s H -a '(tool __complete --host (commandline -ct))'");
     try expectContains(fish, "-a 'alpha beta'");
 }
 
@@ -61,7 +77,19 @@ test "static value completions produce filtered candidate output" {
     defer tmp.cleanup();
 
     try expectBashCandidates(tmp.dir, &.{ "tool", "run", "--mode", "j" }, "json\n", &.{}, &.{"text\n"});
+    try expectBashCandidates(tmp.dir, &.{ "tool", "run", "-m", "j" }, "json\n", &.{}, &.{"text\n"});
+    try expectBashCandidates(tmp.dir, &.{ "tool", "run", "--mode=j" }, "--mode=json\n", &.{}, &.{ "--mode=text\n", "run\n" });
+    try expectBashCandidates(tmp.dir, &.{ "tool", "run", "-mj" }, "-mjson\n", &.{}, &.{ "-mtext\n", "run\n" });
+    try expectBashCandidates(tmp.dir, &.{ "tool", "--mode=j" }, "", &.{}, &.{"--mode=json\n"});
+    try expectBashCandidates(tmp.dir, &.{ "tool", "--mode", "j" }, "", &.{}, &.{"json\n"});
+    try expectBashCandidates(tmp.dir, &.{ "tool", "-mj" }, "", &.{}, &.{"-mjson\n"});
+    try expectBashCandidates(tmp.dir, &.{ "tool", "build", "--mode=j" }, "", &.{}, &.{"--mode=json\n"});
+    try expectBashCandidates(tmp.dir, &.{ "tool", "build", "-mj" }, "", &.{}, &.{"-mjson\n"});
+    try expectBashCandidates(tmp.dir, &.{ "tool", "build", "--profile=d" }, "--profile=debug\n", &.{}, &.{"--profile=release\n"});
+    try expectBashCandidates(tmp.dir, &.{ "tool", "--color=always", "run", "--mode=j" }, "--mode=json\n", &.{}, &.{ "--mode=text\n", "run\n" });
     try expectBashCandidates(tmp.dir, &.{ "tool", "--color", "always", "run", "--mode", "j" }, "json\n", &.{}, &.{"text\n"});
+    try expectBashCandidates(tmp.dir, &.{ "tool", "-C", "always", "run", "-m", "j" }, "json\n", &.{}, &.{ "run\n", "text\n" });
+    try expectBashCandidates(tmp.dir, &.{ "tool", "-Calways", "run", "-mj" }, "-mjson\n", &.{}, &.{ "run\n", "-mtext\n" });
     try expectBashCandidates(tmp.dir, &.{ "tool", "-c", "tool.conf", "run", "--mode", "j" }, "json\n", &.{}, &.{"text\n"});
     try expectBashCandidates(tmp.dir, &.{ "tool", "run", "b" }, "beta\n", &.{}, &.{"alpha\n"});
 }
@@ -82,7 +110,24 @@ test "path completions produce filesystem candidate output" {
     try tmp.dir.createDir(std.testing.io, "alpha-dir", .default_dir);
 
     try expectBashCandidates(tmp.dir, &.{ "tool", "run", "--input", "alpha" }, null, &.{ "alpha.txt\n", "alpha-dir\n" }, &.{"beta.txt\n"});
+    try expectBashCandidates(tmp.dir, &.{ "tool", "run", "-i", "alpha" }, null, &.{ "alpha.txt\n", "alpha-dir\n" }, &.{"beta.txt\n"});
     try expectBashCandidates(tmp.dir, &.{ "tool", "run", "--directory", "alpha" }, "alpha-dir\n", &.{}, &.{ "alpha.txt\n", "beta.txt\n" });
+    try expectBashCandidates(tmp.dir, &.{ "tool", "run", "-d", "alpha" }, "alpha-dir\n", &.{}, &.{ "alpha.txt\n", "beta.txt\n" });
+    try expectBashCandidates(tmp.dir, &.{ "tool", "run", "--input=alpha" }, null, &.{ "--input=alpha.txt\n", "--input=alpha-dir\n" }, &.{"--input=beta.txt\n"});
+    try expectBashCandidates(tmp.dir, &.{ "tool", "run", "-ialpha" }, null, &.{ "-ialpha.txt\n", "-ialpha-dir\n" }, &.{"-ibeta.txt\n"});
+    try expectBashCandidates(tmp.dir, &.{ "tool", "run", "--directory=alpha" }, "--directory=alpha-dir\n", &.{}, &.{ "--directory=alpha.txt\n", "--directory=beta.txt\n" });
+    try expectBashCandidates(tmp.dir, &.{ "tool", "run", "-dalpha" }, "-dalpha-dir\n", &.{}, &.{ "-dalpha.txt\n", "-dbeta.txt\n" });
+}
+
+test "dynamic equals-form completion invokes bash runtime callback path" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try expectBashCandidates(tmp.dir, &.{ "tool", "run", "--host=a" }, "--host=alpha.example\n", &.{}, &.{ "--host=beta.example\n", "run\n" });
+    try expectBashCandidates(tmp.dir, &.{ "tool", "run", "-Ha" }, "-Halpha.example\n", &.{}, &.{ "-Hbeta.example\n", "run\n" });
+    try expectBashCandidates(tmp.dir, &.{ "tool", "run", "-H", "a" }, "alpha.example\n", &.{}, &.{ "beta.example\n", "run\n" });
+    try expectBashCandidates(tmp.dir, &.{ "tool", "run", "--host=none" }, "", &.{}, &.{ "--host=alpha.example\n", "--host=beta.example\n" });
+    try expectBashCandidates(tmp.dir, &.{ "tool", "run", "-Hnone" }, "", &.{}, &.{ "-Halpha.example\n", "-Hbeta.example\n" });
 }
 
 test "dynamic completion with empty prefix output returns normally" {
@@ -151,6 +196,16 @@ fn bashCompletionSource(gpa: std.mem.Allocator, words: []const []const u8) ![]u8
     defer source.deinit(gpa);
 
     try source.appendSlice(gpa,
+        \\tool() {
+        \\    if [[ "$1" == "__complete" && "$2" == "--host" ]]; then
+        \\        case "$3" in
+        \\            "") printf '%s\n' alpha.example beta.example ;;
+        \\            a*) printf '%s\n' alpha.example ;;
+        \\            b*) printf '%s\n' beta.example ;;
+        \\        esac
+        \\    fi
+        \\}
+        \\
         \\source ./tool.bash
         \\COMP_WORDS=(
     );

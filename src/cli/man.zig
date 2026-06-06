@@ -151,6 +151,14 @@ fn renderPage(
             }
         }
 
+        if (hasVisibleFlagGroups(node.flag_groups, flags, options)) {
+            out = out ++ ".SH FLAG GROUPS\n";
+            for (node.flag_groups) |group| {
+                if (!visibleFlagGroup(group, flags, options)) continue;
+                out = out ++ renderFlagGroup(group);
+            }
+        }
+
         if (hasEnv(flags, options)) {
             out = out ++ ".SH ENVIRONMENT\n";
             for (flags) |f| {
@@ -264,6 +272,16 @@ fn renderFlag(comptime f: flag_mod.Flag) []const u8 {
     }
 }
 
+fn renderFlagGroup(comptime group: flag_mod.FlagGroup) []const u8 {
+    comptime {
+        var out: []const u8 = ".TP\n.B " ++ roff(group.name) ++ "\n";
+        out = out ++ roff(flagGroupModeLabel(group.mode)) ++ ": " ++ renderFlagGroupMembers(group.flags);
+        if (group.desc.len > 0) out = out ++ "\n" ++ roff(group.desc);
+        out = out ++ "\n";
+        return out;
+    }
+}
+
 fn renderPositional(comptime p: flag_mod.Positional) []const u8 {
     comptime {
         var out: []const u8 = ".TP\n.I " ++ roff(p.name) ++ "\n";
@@ -280,7 +298,7 @@ fn renderEnv(comptime f: flag_mod.Flag) []const u8 {
     comptime {
         if (f.env == null) return "";
         var out: []const u8 = ".TP\n.B " ++ roff(f.env.?) ++ "\n";
-        out = out ++ "Fallback source for " ++ roffOption(f.long) ++ " when invoked through the cli.run runner (global non-bool flags). The low-level parse/dispatch APIs do not read the environment.\n";
+        out = out ++ "Fallback source for " ++ roffOption(f.long) ++ " when invoked through cli.run. The runner applies env-backed values on the resolved command path before parsing. The low-level parse/dispatch APIs do not read the environment.\n";
         return out;
     }
 }
@@ -341,6 +359,35 @@ fn hasVisibleFlags(comptime flags: []const flag_mod.Flag, comptime options: Opti
     return false;
 }
 
+fn hasVisibleFlagGroups(
+    comptime groups: []const flag_mod.FlagGroup,
+    comptime flags: []const flag_mod.Flag,
+    comptime options: Options,
+) bool {
+    for (groups) |group| if (visibleFlagGroup(group, flags, options)) return true;
+    return false;
+}
+
+fn visibleFlagGroup(
+    comptime group: flag_mod.FlagGroup,
+    comptime flags: []const flag_mod.Flag,
+    comptime options: Options,
+) bool {
+    if (group.flags.len == 0) return false;
+    for (group.flags) |member| {
+        const flag = flagByLong(flags, member) orelse return false;
+        if (!visibleFlag(flag, options)) return false;
+    }
+    return true;
+}
+
+fn flagByLong(comptime flags: []const flag_mod.Flag, comptime long: []const u8) ?flag_mod.Flag {
+    for (flags) |f| {
+        if (std.mem.eql(u8, f.long, long)) return f;
+    }
+    return null;
+}
+
 fn deprecationText(comptime d: anytype) []const u8 {
     comptime {
         var out: []const u8 = "Deprecated";
@@ -359,6 +406,25 @@ fn renderDefault(comptime d: flag_mod.Default) []const u8 {
             .float => |x| std.fmt.comptimePrint("{d}", .{x}),
             .duration => |ns| roff(duration_mod.formatNanos(ns)),
         };
+    }
+}
+
+fn flagGroupModeLabel(comptime mode: flag_mod.FlagGroupMode) []const u8 {
+    return switch (mode) {
+        .mutually_exclusive => "mutually exclusive",
+        .required_one => "at least one required",
+        .required_exactly_one => "exactly one required",
+    };
+}
+
+fn renderFlagGroupMembers(comptime flags: []const []const u8) []const u8 {
+    comptime {
+        var out: []const u8 = "";
+        for (flags, 0..) |name, idx| {
+            if (idx > 0) out = out ++ ", ";
+            out = out ++ roffOption(name);
+        }
+        return out;
     }
 }
 
@@ -478,6 +544,14 @@ const test_root = cmd_mod.Cmd{
             .flags = &.{
                 .{ .long = "--count", .desc = "Run count", .kind = .int, .default = .{ .int = 1 } },
             },
+            .flag_groups = &.{
+                .{
+                    .name = "run-input",
+                    .mode = .required_one,
+                    .flags = &.{ "--verbose", "--count" },
+                    .desc = "Choose a run input.",
+                },
+            },
             .positionals = &.{
                 .{ .name = "target", .desc = "Target name", .kind = .string },
             },
@@ -499,6 +573,9 @@ test "page renders inherited flags for leaf commands" {
     try std.testing.expect(std.mem.indexOf(u8, text, "\\-\\-verbose") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, "\\-\\-count N") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, ".SH ARGUMENTS") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, ".SH FLAG GROUPS") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, ".B run-input") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "at least one required: \\-\\-verbose, \\-\\-count") != null);
 }
 
 test "page accepts sections other than 1" {

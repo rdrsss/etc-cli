@@ -11,3 +11,6 @@ COMMANDS:
 FLAGS:
   --global, -g          (bool) default=false — Global flag
   --profile             (string) — Profile name
+
+FLAG GROUPS:
+  group-scope         at least one required: --global, --profile — Choose a global or profile scope.

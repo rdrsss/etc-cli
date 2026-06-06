@@ -6,6 +6,9 @@
 //!     negation names within a command (including inherited)
 //!   - duplicate short-flag chars within a command (including inherited)
 //!   - duplicate sub-command names within a parent
+//!   - invalid flag-group declarations such as duplicate group names, unknown
+//!     members, duplicate members, partial visibility groups, and impossible
+//!     required/exclusive combinations
 //!   - invalid command, flag, positional, and rest-field syntax
 //!   - generated args field-name collisions
 //!   - Default tag mismatched against the flag's Kind
@@ -131,6 +134,7 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
     }
     if (node.rest_field) |rest| validateRestFieldName(node.name, rest);
     validateGeneratedFieldNames(node, combined);
+    validateFlagGroups(node.name, node.flag_groups, combined);
 
     // Manual documentation invariants.
     for (node.doc.examples, 0..) |example, i| {
@@ -422,6 +426,114 @@ fn validateGeneratedFieldNames(comptime node: cmd_mod.Cmd, comptime combined_fla
     }
 }
 
+fn validateFlagGroups(
+    comptime command_name: []const u8,
+    comptime groups: []const flag.FlagGroup,
+    comptime visible_flags: []const flag.Flag,
+) void {
+    for (groups, 0..) |group, group_index| {
+        validateFieldName(command_name, "flag group", group.name);
+        switch (group.mode) {
+            .mutually_exclusive, .required_one, .required_exactly_one => {},
+        }
+
+        for (groups[group_index + 1 ..]) |other| {
+            if (std.mem.eql(u8, group.name, other.name)) {
+                @compileError("validate: command '" ++ command_name ++ "' has duplicate flag group name '" ++ group.name ++ "'");
+            }
+        }
+
+        if (group.flags.len == 0) {
+            @compileError("validate: flag group '" ++ group.name ++ "' in command '" ++ command_name ++ "' must declare at least one flag");
+        }
+
+        var first_hidden: ?[]const u8 = null;
+        var first_visible: ?[]const u8 = null;
+        var first_deprecated: ?[]const u8 = null;
+        var first_current: ?[]const u8 = null;
+        var first_required: ?[]const u8 = null;
+        var second_required: ?[]const u8 = null;
+
+        for (group.flags, 0..) |member, member_index| {
+            const resolved = comptime resolveGroupMember(command_name, group.name, member, visible_flags);
+            if (!std.mem.eql(u8, member, resolved.long)) {
+                @compileError("validate: flag group '" ++ group.name ++ "' in command '" ++ command_name ++ "' references '" ++ member ++ "'; use canonical long flag '" ++ resolved.long ++ "'");
+            }
+
+            for (group.flags[member_index + 1 ..]) |other_member| {
+                const other = comptime resolveGroupMember(command_name, group.name, other_member, visible_flags);
+                if (std.mem.eql(u8, resolved.long, other.long)) {
+                    @compileError("validate: flag group '" ++ group.name ++ "' in command '" ++ command_name ++ "' has duplicate flag member '" ++ resolved.long ++ "'");
+                }
+            }
+
+            if (resolved.hidden) {
+                if (first_visible) |visible| {
+                    @compileError("validate: flag group '" ++ group.name ++ "' in command '" ++ command_name ++ "' mixes hidden flag '" ++ resolved.long ++ "' with visible flag '" ++ visible ++ "'");
+                }
+                if (first_hidden == null) first_hidden = resolved.long;
+            } else {
+                if (first_hidden) |hidden| {
+                    @compileError("validate: flag group '" ++ group.name ++ "' in command '" ++ command_name ++ "' mixes visible flag '" ++ resolved.long ++ "' with hidden flag '" ++ hidden ++ "'");
+                }
+                if (first_visible == null) first_visible = resolved.long;
+            }
+
+            if (resolved.deprecated != null) {
+                if (first_current) |current| {
+                    @compileError("validate: flag group '" ++ group.name ++ "' in command '" ++ command_name ++ "' mixes deprecated flag '" ++ resolved.long ++ "' with current flag '" ++ current ++ "'");
+                }
+                if (first_deprecated == null) first_deprecated = resolved.long;
+            } else {
+                if (first_deprecated) |deprecated| {
+                    @compileError("validate: flag group '" ++ group.name ++ "' in command '" ++ command_name ++ "' mixes current flag '" ++ resolved.long ++ "' with deprecated flag '" ++ deprecated ++ "'");
+                }
+                if (first_current == null) first_current = resolved.long;
+            }
+
+            if (resolved.required) {
+                if (first_required == null) {
+                    first_required = resolved.long;
+                } else if (second_required == null) {
+                    second_required = resolved.long;
+                }
+            }
+        }
+
+        if (second_required) |second| {
+            const first = first_required.?;
+            switch (group.mode) {
+                .mutually_exclusive => {
+                    @compileError("validate: flag group '" ++ group.name ++ "' in command '" ++ command_name ++ "' has incompatible mode .mutually_exclusive because required members '" ++ first ++ "' and '" ++ second ++ "' cannot both be satisfied");
+                },
+                .required_exactly_one => {
+                    @compileError("validate: flag group '" ++ group.name ++ "' in command '" ++ command_name ++ "' has incompatible mode .required_exactly_one because required members '" ++ first ++ "' and '" ++ second ++ "' cannot both be satisfied");
+                },
+                .required_one => {},
+            }
+        }
+    }
+}
+
+fn resolveGroupMember(
+    comptime command_name: []const u8,
+    comptime group_name: []const u8,
+    comptime member: []const u8,
+    comptime visible_flags: []const flag.Flag,
+) flag.Flag {
+    for (visible_flags) |f| {
+        if (std.mem.eql(u8, member, f.long)) return f;
+        for (f.aliases) |alias| {
+            if (std.mem.eql(u8, member, alias)) return f;
+        }
+        if (f.short) |short| {
+            if (member.len == 2 and member[0] == '-' and member[1] == short) return f;
+        }
+    }
+
+    @compileError("validate: flag group '" ++ group_name ++ "' in command '" ++ command_name ++ "' references unknown flag '" ++ member ++ "'; members must name visible flags at that command path");
+}
+
 fn fieldCollision(comptime command_name: []const u8, comptime field_name: []const u8) noreturn {
     @compileError("validate: generated args field '" ++ field_name ++ "' collides in command '" ++ command_name ++ "'");
 }
@@ -544,6 +656,37 @@ test "validate accepts a well-formed tree" {
                     },
                     .notes = &.{"Notes are rendered in generated docs."},
                     .see_also = &.{"tool(1)"},
+                },
+            },
+        },
+    };
+    comptime validate(root);
+}
+
+test "validate accepts leaf flag groups over inherited and local flags" {
+    const root = cmd_mod.Cmd{
+        .name = "tool",
+        .flags = &.{
+            .{ .long = "--verbose", .kind = .bool },
+        },
+        .cmds = &.{
+            .{
+                .name = "run",
+                .flags = &.{
+                    .{ .long = "--json", .kind = .bool },
+                    .{ .long = "--yaml", .kind = .bool },
+                },
+                .flag_groups = &.{
+                    .{
+                        .name = "output",
+                        .mode = .required_exactly_one,
+                        .flags = &.{ "--json", "--yaml" },
+                    },
+                    .{
+                        .name = "selection",
+                        .mode = .required_one,
+                        .flags = &.{ "--verbose", "--json" },
+                    },
                 },
             },
         },

@@ -5,6 +5,7 @@
 //! they hand the returned `Detail` to `format` and decide where to write it.
 
 const std = @import("std");
+const flag_mod = @import("flag.zig");
 
 /// Tagged error kinds returned from `parser.parse`. Each kind is matched
 /// against a `Detail` payload that carries the offending input slice and
@@ -19,6 +20,7 @@ pub const Parse = error{
     UnknownSubcommand,
     UnexpectedArgument,
     DuplicateFlag,
+    FlagGroupViolation,
 };
 
 /// Structured error context. The parser fills this in alongside returning a
@@ -39,6 +41,12 @@ pub const Detail = struct {
     suggestion: ?[]const u8 = null,
     /// Optional custom message from a value validator.
     message: ?[]const u8 = null,
+    /// The flag group name, when applicable.
+    group: ?[]const u8 = null,
+    /// The flag group mode, when applicable.
+    group_mode: ?flag_mod.FlagGroupMode = null,
+    /// Canonical long flag names involved in a group violation.
+    group_flags: []const []const u8 = &.{},
 };
 
 /// A `Detail` plus a stable, machine-readable `kind_name` string. Use this
@@ -55,6 +63,9 @@ pub const Structured = struct {
     cmd_path: ?[]const u8 = null,
     suggestion: ?[]const u8 = null,
     message: ?[]const u8 = null,
+    group: ?[]const u8 = null,
+    group_mode: ?flag_mod.FlagGroupMode = null,
+    group_flags: []const []const u8 = &.{},
 };
 
 /// Convert a `Detail` into a `Structured` value, attaching the stable
@@ -70,6 +81,9 @@ pub fn structured(detail: Detail) Structured {
         .cmd_path = detail.cmd_path,
         .suggestion = detail.suggestion,
         .message = detail.message,
+        .group = detail.group,
+        .group_mode = detail.group_mode,
+        .group_flags = detail.group_flags,
     };
 }
 
@@ -88,6 +102,7 @@ pub fn kindName(kind: Parse) []const u8 {
         Parse.UnknownSubcommand => "unknown_subcommand",
         Parse.UnexpectedArgument => "unexpected_argument",
         Parse.DuplicateFlag => "duplicate_flag",
+        Parse.FlagGroupViolation => "flag_group_violation",
     };
 }
 
@@ -105,10 +120,23 @@ pub fn format(detail: Detail, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         Parse.UnknownSubcommand => try writer.print("unknown subcommand", .{}),
         Parse.UnexpectedArgument => try writer.print("unexpected argument", .{}),
         Parse.DuplicateFlag => try writer.print("flag specified more than once", .{}),
+        Parse.FlagGroupViolation => try writer.print("flag group violation", .{}),
     }
     if (detail.message) |m| try writer.print(" ({s})", .{m});
     if (detail.flag) |f| try writer.print(": {s}", .{f});
     if (detail.positional) |p| try writer.print(": <{s}>", .{p});
+    if (detail.group) |g| {
+        try writer.print(": {s}", .{g});
+        if (detail.group_mode) |mode| try writer.print(" ({s})", .{@tagName(mode)});
+        if (detail.group_flags.len > 0) {
+            try writer.print(" [", .{});
+            for (detail.group_flags, 0..) |name, idx| {
+                if (idx > 0) try writer.print(", ", .{});
+                try writer.print("{s}", .{name});
+            }
+            try writer.print("]", .{});
+        }
+    }
     if (detail.arg) |a| try writer.print(" (got {s})", .{a});
     if (detail.cmd_path) |c| try writer.print(" [in: {s}]", .{c});
     if (detail.suggestion) |s| try writer.print("; did you mean {s}?", .{s});
@@ -142,4 +170,20 @@ test "structured exposes stable parse error fields" {
     try std.testing.expectEqualStrings("unknown_subcommand", value.kind_name);
     try std.testing.expectEqualStrings("statsu", value.arg.?);
     try std.testing.expectEqualStrings("status", value.suggestion.?);
+}
+
+test "structured exposes flag group violation fields" {
+    const value = structured(.{
+        .kind = Parse.FlagGroupViolation,
+        .group = "output",
+        .group_mode = .mutually_exclusive,
+        .group_flags = &.{ "--json", "--yaml" },
+        .cmd_path = "tool render",
+    });
+    try std.testing.expectEqual(Parse.FlagGroupViolation, value.kind);
+    try std.testing.expectEqualStrings("flag_group_violation", value.kind_name);
+    try std.testing.expectEqualStrings("output", value.group.?);
+    try std.testing.expectEqual(flag_mod.FlagGroupMode.mutually_exclusive, value.group_mode.?);
+    try std.testing.expectEqual(@as(usize, 2), value.group_flags.len);
+    try std.testing.expectEqualStrings("--json", value.group_flags[0]);
 }

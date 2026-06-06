@@ -3,6 +3,7 @@
 const std = @import("std");
 const cmd_mod = @import("cmd.zig");
 const err_mod = @import("error.zig");
+const flag_mod = @import("flag.zig");
 const help_mod = @import("help.zig");
 const parser = @import("parser.zig");
 const completion_mod = @import("completion.zig");
@@ -28,12 +29,12 @@ pub const Options = struct {
     /// printed its own message), or map specific errors to exit codes.
     on_handler_error: ?*const fn (err: anyerror, stderr: *std.Io.Writer) anyerror!?u8 = null,
     /// Optional environment lookup for `Flag.env` fallback. Given a variable
-    /// name, return its value or null. When set, the runner fills any global
-    /// (root) non-bool flag that has `.env` set and is absent from argv with
-    /// its environment value before parsing — so precedence is argv > env >
-    /// default > required-error. Leaf-specific and bool env flags are not yet
-    /// covered. The parser/dispatch APIs remain env-unaware. Returned values
-    /// must outlive the call (e.g. slices into the process environment).
+    /// name, return its value or null. When set, the runner first resolves the
+    /// command path from argv, then fills any visible flag with `.env` set and
+    /// absent from argv with its environment value before parsing — so
+    /// precedence is argv > env > default > required-error. The
+    /// parser/dispatch APIs remain env-unaware. Returned values must outlive
+    /// the call (e.g. slices into the process environment).
     env_lookup: ?*const fn (name: []const u8) ?[]const u8 = null,
 };
 
@@ -41,6 +42,9 @@ pub const Options = struct {
 /// buffers, the returned slice stays valid until the next `run`; single-
 /// threaded by construction.
 var env_argv_buf: [512][]const u8 = undefined;
+var env_path_buf: [256][]const u8 = undefined;
+var env_token_buf: [4096]u8 = undefined;
+var env_token_len: usize = 0;
 
 pub fn run(comptime root: cmd_mod.Cmd, options: Options) anyerror!u8 {
     // Dynamic-completion callback entrypoint, invoked by generated scripts as
@@ -77,52 +81,362 @@ pub fn run(comptime root: cmd_mod.Cmd, options: Options) anyerror!u8 {
     }
 }
 
-/// Build an argv with environment fallbacks for global (root) non-bool flags
-/// injected after argv[0] (before subcommands, so `--` passthrough is
-/// unaffected). Only flags absent from argv whose env var resolves are added.
+/// Build an argv with environment fallbacks for flags visible at the
+/// argv-resolved command path. The injected tokens sit immediately after the
+/// matched command path, where the parser already sees the leaf's inherited +
+/// local flags. Only flags absent from argv whose env var resolves are added.
 fn augmentWithEnv(
     comptime root: cmd_mod.Cmd,
     argv: []const []const u8,
     lookup: *const fn (name: []const u8) ?[]const u8,
 ) []const []const u8 {
     if (argv.len == 0) return argv;
+    const path = resolveCommandPath(root, argv);
+
+    env_token_len = 0;
     env_argv_buf[0] = argv[0];
     var n: usize = 1;
-    inline for (root.flags) |f| {
-        if (comptime f.env != null and f.kind != .bool and !f.list) {
-            if (!argvHasFlag(argv, f)) {
+
+    var injected = false;
+    if (path.len == 0) {
+        appendEnvFallbacksForPath(root, path, argv, lookup, &n);
+        injected = true;
+    }
+
+    const max_depth = comptime treeDepth(root);
+    var path_len: usize = 0;
+    var ancestors: [max_depth + 1]cmd_mod.Cmd = undefined;
+    ancestors[0] = root;
+    var current: cmd_mod.Cmd = root;
+    var passthrough = false;
+
+    var i: usize = 1;
+    while (i < argv.len) : (i += 1) {
+        const tok = argv[i];
+        if (n >= env_argv_buf.len) return argv; // overflow: fall back to raw argv
+        env_argv_buf[n] = tok;
+        n += 1;
+
+        if (tok.len == 0) continue;
+
+        if (passthrough or tok[0] != '-' or std.mem.eql(u8, tok, "-")) {
+            if (!passthrough) {
+                var matched = false;
+                for (current.cmds) |c| {
+                    if (commandMatches(c, tok)) {
+                        if (path_len >= env_path_buf.len) return argv;
+                        path_len += 1;
+                        ancestors[path_len] = c;
+                        current = c;
+                        matched = true;
+                        if (!injected and path_len == path.len) {
+                            appendEnvFallbacksForPath(root, path, argv, lookup, &n);
+                            injected = true;
+                        }
+                        break;
+                    }
+                }
+                if (matched) continue;
+            }
+            continue;
+        }
+
+        if (std.mem.eql(u8, tok, "--")) {
+            passthrough = true;
+            continue;
+        }
+
+        if (flagWantsValue(ancestors[0 .. path_len + 1], tok)) {
+            i += 1;
+            if (i < argv.len) {
+                if (n >= env_argv_buf.len) return argv;
+                env_argv_buf[n] = argv[i];
+                n += 1;
+            }
+        }
+    }
+
+    if (!injected) {
+        appendEnvFallbacksForPath(root, path, argv, lookup, &n);
+    }
+
+    return env_argv_buf[0..n];
+}
+
+fn appendEnvFallbacksForPath(
+    comptime root: cmd_mod.Cmd,
+    path: []const []const u8,
+    argv: []const []const u8,
+    lookup: *const fn (name: []const u8) ?[]const u8,
+    n: *usize,
+) void {
+    if (path.len == 0) {
+        appendEnvFallbacks(root.flags, argv, lookup, n);
+        return;
+    }
+
+    const nodes = comptime cmd_mod.allNodes(root);
+    inline for (nodes) |node| {
+        if (pathsEqual(node.path, path)) {
+            const visible_flags = comptime cmd_mod.collectInheritedFlags(root, node.path) ++ node.cmd.flags;
+            appendEnvFallbacks(visible_flags, argv, lookup, n);
+            return;
+        }
+    }
+}
+
+fn appendEnvFallbacks(
+    comptime flags: []const flag_mod.Flag,
+    argv: []const []const u8,
+    lookup: *const fn (name: []const u8) ?[]const u8,
+    n: *usize,
+) void {
+    inline for (flags) |f| {
+        if (comptime f.env != null) {
+            if (!argvHasFlag(flags, argv, f)) {
                 if (lookup(f.env.?)) |value| {
-                    if (n + 2 <= env_argv_buf.len) {
-                        env_argv_buf[n] = f.long;
-                        env_argv_buf[n + 1] = value;
-                        n += 2;
+                    if (f.kind == .bool) {
+                        if (makeInlineBoolEnvToken(f.long, value)) |tok| {
+                            if (n.* + 1 <= env_argv_buf.len) {
+                                env_argv_buf[n.*] = tok;
+                                n.* += 1;
+                            }
+                        }
+                    } else {
+                        if (n.* + 2 <= env_argv_buf.len) {
+                            env_argv_buf[n.*] = f.long;
+                            env_argv_buf[n.* + 1] = value;
+                            n.* += 2;
+                        }
                     }
                 }
             }
         }
     }
-    for (argv[1..]) |a| {
-        if (n >= env_argv_buf.len) return argv; // overflow: fall back to raw argv
-        env_argv_buf[n] = a;
-        n += 1;
-    }
-    return env_argv_buf[0..n];
 }
 
-fn argvHasFlag(argv: []const []const u8, comptime f: anytype) bool {
-    for (argv) |tok| {
-        if (std.mem.eql(u8, tok, f.long)) return true;
-        if (std.mem.startsWith(u8, tok, f.long) and tok.len > f.long.len and tok[f.long.len] == '=') return true;
-        inline for (f.aliases) |alias| {
-            if (std.mem.eql(u8, tok, alias)) return true;
-            if (std.mem.startsWith(u8, tok, alias) and tok.len > alias.len and tok[alias.len] == '=') return true;
-        }
-        if (f.short) |s| {
-            if (tok.len == 2 and tok[0] == '-' and tok[1] == s) return true;
-            if (tok.len > 2 and tok[0] == '-' and tok[1] == s) return true;
+fn makeInlineBoolEnvToken(comptime long: []const u8, value: []const u8) ?[]const u8 {
+    const needed = long.len + 1 + value.len;
+    if (env_token_len + needed > env_token_buf.len) return null;
+    const start = env_token_len;
+    @memcpy(env_token_buf[start..][0..long.len], long);
+    env_token_buf[start + long.len] = '=';
+    @memcpy(env_token_buf[start + long.len + 1 ..][0..value.len], value);
+    env_token_len += needed;
+    return env_token_buf[start..env_token_len];
+}
+
+fn argvHasFlag(
+    comptime flags: []const flag_mod.Flag,
+    argv: []const []const u8,
+    comptime target: flag_mod.Flag,
+) bool {
+    var i: usize = 1;
+    while (i < argv.len) : (i += 1) {
+        const tok = argv[i];
+        if (tok.len == 0) continue;
+        if (std.mem.eql(u8, tok, "--")) break;
+        if (tok.len < 2 or tok[0] != '-') continue;
+
+        if (tokenNamesFlag(flags, target, tok)) return true;
+
+        if (tokenWantsSeparatedValue(flags, tok)) {
+            i += 1;
         }
     }
     return false;
+}
+
+fn tokenNamesFlag(
+    comptime flags: []const flag_mod.Flag,
+    comptime target: flag_mod.Flag,
+    tok: []const u8,
+) bool {
+    if (tok.len >= 2 and tok[0] == '-' and tok[1] == '-') {
+        if (flagLongMatches(target, tok)) return true;
+        if (target.kind == .bool and flagNegationMatches(target, tok)) return true;
+        if (startsWithInlineLongValue(target.long, tok)) return true;
+        inline for (target.aliases) |alias| {
+            if (startsWithInlineLongValue(alias, tok)) return true;
+        }
+        return false;
+    }
+
+    if (tok.len >= 2 and tok[0] == '-') {
+        return shortTokenNamesFlag(flags, target, tok);
+    }
+
+    return false;
+}
+
+fn startsWithInlineLongValue(comptime name: []const u8, tok: []const u8) bool {
+    return std.mem.startsWith(u8, tok, name) and tok.len > name.len and tok[name.len] == '=';
+}
+
+fn shortTokenNamesFlag(
+    comptime flags: []const flag_mod.Flag,
+    comptime target: flag_mod.Flag,
+    tok: []const u8,
+) bool {
+    if (target.short == null) return false;
+    const target_short = target.short.?;
+
+    if (tok.len == 2) return tok[1] == target_short;
+
+    const first_idx = matchShortFlag(flags, tok[1]) orelse return false;
+    const first_flag = flags[first_idx];
+    if (first_flag.kind != .bool) return tok[1] == target_short;
+
+    var pos: usize = 1;
+    while (pos < tok.len) : (pos += 1) {
+        const idx = matchShortFlag(flags, tok[pos]) orelse return false;
+        if (flags[idx].kind != .bool) return false;
+    }
+
+    if (target.kind != .bool) return false;
+    for (tok[1..]) |short| {
+        if (short == target_short) return true;
+    }
+    return false;
+}
+
+fn tokenWantsSeparatedValue(comptime flags: []const flag_mod.Flag, tok: []const u8) bool {
+    if (tok.len >= 2 and tok[0] == '-' and tok[1] == '-') {
+        inline for (flags) |f| {
+            if (flagLongMatches(f, tok)) return f.kind != .bool;
+        }
+        return false;
+    }
+
+    if (tok.len == 2 and tok[0] == '-') {
+        const idx = matchShortFlag(flags, tok[1]) orelse return false;
+        return flags[idx].kind != .bool;
+    }
+
+    return false;
+}
+
+fn matchShortFlag(comptime flags: []const flag_mod.Flag, short: u8) ?usize {
+    inline for (flags, 0..) |f, idx| {
+        if (f.short) |s| {
+            if (s == short) return idx;
+        }
+    }
+    return null;
+}
+
+fn resolveCommandPath(comptime root: cmd_mod.Cmd, argv: []const []const u8) []const []const u8 {
+    if (argv.len == 0) return &.{};
+
+    const max_depth = comptime treeDepth(root);
+    var path_len: usize = 0;
+    var ancestors: [max_depth + 1]cmd_mod.Cmd = undefined;
+    ancestors[0] = root;
+    var current: cmd_mod.Cmd = root;
+    var passthrough = false;
+
+    var i: usize = 1;
+    while (i < argv.len) : (i += 1) {
+        const tok = argv[i];
+        if (tok.len == 0) continue;
+
+        if (passthrough or tok[0] != '-' or std.mem.eql(u8, tok, "-")) {
+            if (!passthrough) {
+                var matched = false;
+                for (current.cmds) |c| {
+                    if (commandMatches(c, tok)) {
+                        if (path_len >= env_path_buf.len) return env_path_buf[0..path_len];
+                        env_path_buf[path_len] = c.name;
+                        path_len += 1;
+                        ancestors[path_len] = c;
+                        current = c;
+                        matched = true;
+                        break;
+                    }
+                }
+                if (matched) continue;
+            }
+            continue;
+        }
+
+        if (std.mem.eql(u8, tok, "--")) {
+            passthrough = true;
+            continue;
+        }
+
+        if (flagWantsValue(ancestors[0 .. path_len + 1], tok)) {
+            i += 1;
+        }
+    }
+
+    return env_path_buf[0..path_len];
+}
+
+fn flagWantsValue(scope: []const cmd_mod.Cmd, tok: []const u8) bool {
+    if (tok.len >= 2 and tok[0] == '-' and tok[1] == '-') {
+        for (scope) |node| {
+            for (node.flags) |f| {
+                if (flagLongMatches(f, tok)) return f.kind != .bool;
+            }
+        }
+        return false;
+    }
+
+    if (tok.len == 2 and tok[0] == '-') {
+        for (scope) |node| {
+            for (node.flags) |f| {
+                if (f.short) |s| if (s == tok[1]) return f.kind != .bool;
+            }
+        }
+        return false;
+    }
+
+    return false;
+}
+
+fn commandMatches(command: cmd_mod.Cmd, tok: []const u8) bool {
+    if (std.mem.eql(u8, command.name, tok)) return true;
+    for (command.aliases) |alias| {
+        if (std.mem.eql(u8, alias, tok)) return true;
+    }
+    return false;
+}
+
+fn flagLongMatches(f: flag_mod.Flag, tok: []const u8) bool {
+    if (std.mem.eql(u8, f.long, tok)) return true;
+    for (f.aliases) |alias| {
+        if (std.mem.eql(u8, alias, tok)) return true;
+    }
+    return false;
+}
+
+fn flagNegationMatches(comptime f: flag_mod.Flag, tok: []const u8) bool {
+    if (std.mem.startsWith(u8, f.long, "--")) {
+        const negated = "--no-" ++ f.long[2..];
+        if (std.mem.eql(u8, negated, tok)) return true;
+    }
+    inline for (f.aliases) |alias| {
+        if (std.mem.startsWith(u8, alias, "--")) {
+            const negated = "--no-" ++ alias[2..];
+            if (std.mem.eql(u8, negated, tok)) return true;
+        }
+    }
+    return false;
+}
+
+fn treeDepth(comptime root: cmd_mod.Cmd) usize {
+    comptime {
+        var max: usize = 0;
+        depthWalk(root, 0, &max);
+        return @max(max, 1);
+    }
+}
+
+fn depthWalk(comptime node: cmd_mod.Cmd, comptime current: usize, comptime max: *usize) void {
+    comptime {
+        if (current > max.*) max.* = current;
+        for (node.cmds) |c| depthWalk(c, current + 1, max);
+    }
 }
 
 fn maybeBuiltin(comptime root: cmd_mod.Cmd, options: Options) !?u8 {

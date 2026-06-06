@@ -41,6 +41,9 @@ pub const Cmd = struct {
     long_desc: []const u8 = "",
     flags: []const flag.Flag = &.{},
     positionals: []const flag.Positional = &.{},
+    /// Command-level flag relationships. Groups reference canonical long flag
+    /// names visible at this command path, including inherited flags.
+    flag_groups: []const flag.FlagGroup = &.{},
     /// Manual-only metadata used by documentation generators. This does not
     /// affect parser behavior or generated ArgsType fields.
     doc: doc_mod.Doc = .{},
@@ -472,6 +475,33 @@ test "ArgsType field types reflect Kind" {
     try std.testing.expectEqual([]const u8, info.fields[1].type); // title (required → no Optional)
     try std.testing.expectEqual(i64, info.fields[2].type); // priority (has default)
     try std.testing.expectEqual(?[]const u8, info.fields[3].type); // scope (not required)
+}
+
+test "Cmd flag_groups defaults empty and can reference visible flags" {
+    const grouped = Cmd{
+        .name = "tool",
+        .flags = &.{
+            .{ .long = "--global", .kind = .bool },
+        },
+        .cmds = &.{
+            .{
+                .name = "leaf",
+                .flags = &.{
+                    .{ .long = "--local", .kind = .bool },
+                },
+                .flag_groups = &.{
+                    .{
+                        .name = "scope",
+                        .mode = .required_one,
+                        .flags = &.{ "--global", "--local" },
+                    },
+                },
+            },
+        },
+    };
+    try std.testing.expectEqual(@as(usize, 0), grouped.flag_groups.len);
+    try std.testing.expectEqual(@as(usize, 1), grouped.cmds[0].flag_groups.len);
+    try std.testing.expectEqualStrings("--global", grouped.cmds[0].flag_groups[0].flags[0]);
 }
 
 // =========================================================================

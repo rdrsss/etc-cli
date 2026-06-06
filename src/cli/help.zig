@@ -114,6 +114,24 @@ fn renderCmd(
             }
         }
 
+        // Flag groups.
+        if (hasVisibleFlagGroups(node.flag_groups, flags, options)) {
+            out = out ++ "\nFLAG GROUPS:\n";
+            for (node.flag_groups) |group| {
+                if (!visibleFlagGroup(group, flags, options)) continue;
+                out = out ++ "  " ++ renderFlagGroupLine(group, options) ++ "\n";
+            }
+        }
+
+        // Environment fallback.
+        if (hasVisibleEnv(flags, options)) {
+            out = out ++ "\nENVIRONMENT:\n";
+            for (flags) |f| {
+                if (!visibleFlag(f, options)) continue;
+                out = out ++ renderEnvLine(f, options);
+            }
+        }
+
         // Positionals.
         if (node.positionals.len > 0) {
             out = out ++ "\nPOSITIONAL ARGUMENTS:\n";
@@ -159,6 +177,31 @@ fn renderFlagLine(comptime f: flag_mod.Flag, comptime options: Options) []const 
     }
 }
 
+fn renderFlagGroupLine(comptime group: flag_mod.FlagGroup, comptime options: Options) []const u8 {
+    comptime {
+        var out: []const u8 = group.name ++ padTo(group.name, if (compact(options)) 14 else 20);
+        out = out ++ flagGroupModeLabel(group.mode) ++ ": " ++ joinFlagNames(group.flags);
+        if (group.desc.len > 0) {
+            if (compact(options)) {
+                out = out ++ "\n      " ++ group.desc;
+            } else {
+                out = out ++ " — " ++ group.desc;
+            }
+        }
+        return out;
+    }
+}
+
+fn renderEnvLine(comptime f: flag_mod.Flag, comptime options: Options) []const u8 {
+    comptime {
+        if (f.env == null) return "";
+        const env = f.env.?;
+        var out: []const u8 = "  " ++ env ++ padTo(env, if (compact(options)) 16 else 22);
+        out = out ++ "cli.run fallback for " ++ f.long ++ "; parse/dispatch env-unaware\n";
+        return out;
+    }
+}
+
 fn compact(comptime options: Options) bool {
     return if (options.width) |width| width <= 48 else false;
 }
@@ -185,6 +228,40 @@ fn hasVisibleFlags(comptime flags: []const flag_mod.Flag, comptime options: Opti
     return false;
 }
 
+fn hasVisibleEnv(comptime flags: []const flag_mod.Flag, comptime options: Options) bool {
+    for (flags) |f| if (visibleFlag(f, options) and f.env != null) return true;
+    return false;
+}
+
+fn hasVisibleFlagGroups(
+    comptime groups: []const flag_mod.FlagGroup,
+    comptime flags: []const flag_mod.Flag,
+    comptime options: Options,
+) bool {
+    for (groups) |group| if (visibleFlagGroup(group, flags, options)) return true;
+    return false;
+}
+
+fn visibleFlagGroup(
+    comptime group: flag_mod.FlagGroup,
+    comptime flags: []const flag_mod.Flag,
+    comptime options: Options,
+) bool {
+    if (group.flags.len == 0) return false;
+    for (group.flags) |member| {
+        const flag = flagByLong(flags, member) orelse return false;
+        if (!visibleFlag(flag, options)) return false;
+    }
+    return true;
+}
+
+fn flagByLong(comptime flags: []const flag_mod.Flag, comptime long: []const u8) ?flag_mod.Flag {
+    for (flags) |f| {
+        if (std.mem.eql(u8, f.long, long)) return f;
+    }
+    return null;
+}
+
 fn deprecationSuffix(comptime d: anytype) []const u8 {
     comptime {
         var out: []const u8 = " (deprecated";
@@ -203,6 +280,25 @@ fn renderDefault(comptime d: flag_mod.Default) []const u8 {
             .float => |x| std.fmt.comptimePrint("{d}", .{x}),
             .duration => |ns| duration_mod.formatNanos(ns),
         };
+    }
+}
+
+fn flagGroupModeLabel(comptime mode: flag_mod.FlagGroupMode) []const u8 {
+    return switch (mode) {
+        .mutually_exclusive => "mutually exclusive",
+        .required_one => "at least one required",
+        .required_exactly_one => "exactly one required",
+    };
+}
+
+fn joinFlagNames(comptime flags: []const []const u8) []const u8 {
+    comptime {
+        var out: []const u8 = "";
+        for (flags, 0..) |name, idx| {
+            if (idx > 0) out = out ++ ", ";
+            out = out ++ name;
+        }
+        return out;
     }
 }
 
@@ -255,6 +351,14 @@ const test_root = cmd_mod.Cmd{
                     .flags = &.{
                         .{ .long = "--title", .desc = "Task title", .kind = .string, .required = true },
                     },
+                    .flag_groups = &.{
+                        .{
+                            .name = "task-input",
+                            .mode = .required_one,
+                            .flags = &.{ "--verbose", "--title" },
+                            .desc = "Choose a task input.",
+                        },
+                    },
                     .positionals = &.{
                         .{ .name = "scope", .desc = "Optional scope", .kind = .string, .required = false },
                     },
@@ -279,6 +383,9 @@ test "helpText for leaf includes flags and positionals" {
     try std.testing.expect(std.mem.indexOf(u8, text, "required") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, "<scope>") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, "optional") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "FLAG GROUPS:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "task-input") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "at least one required: --verbose, --title") != null);
 }
 
 const inherited_root = cmd_mod.Cmd{

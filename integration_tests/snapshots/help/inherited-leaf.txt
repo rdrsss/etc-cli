@@ -9,3 +9,6 @@ FLAGS:
   --global, -g          (bool) default=false — Global flag
   --profile             (string) — Profile name
   --count, -c           (int) default=1 — Run count
+
+FLAG GROUPS:
+  leaf-scope          exactly one required: --profile, --count — Choose exactly one leaf scope.

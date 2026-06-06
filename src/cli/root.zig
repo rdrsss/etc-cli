@@ -64,6 +64,8 @@ pub const duration = @import("duration.zig");
 // Types.
 pub const Cmd = cmd.Cmd;
 pub const Flag = flag.Flag;
+pub const FlagGroup = flag.FlagGroup;
+pub const FlagGroupMode = flag.FlagGroupMode;
 pub const Positional = flag.Positional;
 pub const Kind = flag.Kind;
 pub const Default = flag.Default;

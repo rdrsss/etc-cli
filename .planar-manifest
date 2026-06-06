@@ -1,0 +1,42 @@
+{
+  "version": 2,
+  "algo": "xxh64",
+  "root": "7bdd9d7ff5c9c3d1",
+  "generated_at": "",
+  "entries": {
+    "README.md": {
+      "doc_hash": "ec4db0893dc1a513",
+      "sources": {
+        "build.zig": "e6c42d3c8b08df20",
+        "examples/basic.zig": "6823dd9ddd48a16d",
+        "src/cli/": "0d18eb82bd78db19"
+      },
+      "sources_hash": "b3dea8526cedb168",
+      "entry_hash": "9a0913f65c1bb350"
+    },
+    "docs/ci.md": {
+      "doc_hash": "5bcc24437c48d491",
+      "sources": {
+        "scripts/": "bf34503df4d1d08c"
+      },
+      "sources_hash": "34ec4a17e5621704",
+      "entry_hash": "52bac42c7f8168ab"
+    },
+    "docs/release.md": {
+      "doc_hash": "cc3bf869cc1234b5",
+      "sources": {
+        "CHANGELOG.md": "77d748f52b89d7e3",
+        "build.zig.zon": "8e0cd97adbf856f4"
+      },
+      "sources_hash": "f2522204c9259720",
+      "entry_hash": "344bbd011f2f3ea4"
+    }
+  },
+  "nodoc": {
+    "CODE_OF_CONDUCT.md": "384342de5eaaa6a1",
+    "CONTRIBUTING.md": "4f1f96594a49fb03",
+    "LICENSE": "1f696e0bbc135b12",
+    "SECURITY.md": "b17f3ab118364dd6",
+    "integration_tests/": "894639c2d25e1bd9"
+  }
+}

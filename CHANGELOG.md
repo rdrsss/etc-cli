@@ -6,6 +6,36 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Command-level flag groups via `FlagGroup`, `FlagGroupMode`, and
+  `Cmd.flag_groups`. Groups support `.mutually_exclusive`, `.required_one`, and
+  `.required_exactly_one`, validate canonical visible flag members at comptime,
+  enforce the selected command path at parse time, and render in help, man
+  pages, and schema JSON.
+- `cli.run` environment fallback now resolves the command path first and applies
+  `Flag.env` to all visible flags on that path, including inherited, local,
+  bool, list, and scalar value flags. Precedence remains argv > environment >
+  default > required error, and `parse`/`dispatch` remain environment-unaware.
+- Schema generation accepts `.include_command_tree = true` to add an opt-in
+  nested `commandTree` view while preserving the default flat
+  `"schemaVersion": 1` schema. Flat entries and tree nodes carry matching
+  command metadata, including flag groups, docs, completion, and
+  `cli-run-fallback` env behavior where applicable.
+- Shell completion now completes long `--flag=value` prefixes and short
+  separated or attached value forms using the same static, file, directory, or
+  dynamic value sources, while preserving command-path tracking after consumed
+  flag values.
+- Packaging artifact helpers now expose advisory `category` and
+  `destination_hint` metadata for man pages, bash/zsh/fish completions, and
+  schema artifacts without installing, compressing, or writing files.
+
+### Changed
+
+- The completion lint gate now fails when a supported shell has no committed
+  completion snapshots, and syntax-checks bash, zsh, and fish snapshots when the
+  corresponding shell is installed.
+
 ## [0.1.1] - 2026-06-03
 
 ### Added

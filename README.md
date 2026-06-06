@@ -89,8 +89,8 @@ const code = try cli.run(root, .{
 Runner policy is deliberately narrow: `--help`, no-handler help, `--version`,
 and `--about` write stdout and return `0`; parse errors write stderr and return
 `2`; handler errors write stderr and return `1`. The runner also owns the
-narrow `Flag.env` fallback described below; deprecation warnings are reserved
-for a later policy.
+`Flag.env` fallback described below and warns on stderr when the invoked command
+is deprecated.
 
 ## Aliases and Visibility
 
@@ -106,7 +106,8 @@ argument names remain stable during migrations:
 Hidden commands and flags remain parseable but are omitted from help,
 completion, man pages, and schema output unless the generator option includes
 hidden items. Deprecated items remain parseable and render deprecation metadata
-in generated docs/schema; runner warnings are reserved for a later policy.
+in generated docs/schema; `cli.run` also warns when a deprecated command is
+invoked. Flag-level deprecation warnings remain a later runner policy.
 
 ## Flag Values
 
@@ -140,7 +141,51 @@ reject it as `InvalidValue`. List-valued flags are supported for `.string`,
 `.path`, and `.choice` values by setting `.list = true`; they may repeat and
 generate `[]const []const u8` fields with an empty default. Optional
 positionals can declare defaults, which fill the generated field when the slot
-is omitted. Flag groups are still deferred API work.
+is omitted.
+
+Commands can also declare flag groups as command metadata. Groups reference the
+canonical long names of flags visible at that command path, including inherited
+flags:
+
+```zig
+const root = cli.Cmd{
+    .name = "tool",
+    .flags = &.{
+        .{ .long = "--verbose", .kind = .bool },
+    },
+    .cmds = &.{
+        .{
+            .name = "run",
+            .flags = &.{
+                .{ .long = "--json", .kind = .bool },
+                .{ .long = "--yaml", .kind = .bool },
+                .{ .long = "--text", .kind = .bool },
+            },
+            .flag_groups = &.{
+                .{
+                    .name = "output-format",
+                    .mode = .required_exactly_one,
+                    .flags = &.{ "--json", "--yaml", "--text" },
+                    .desc = "Choose one output format.",
+                },
+                .{
+                    .name = "run-input",
+                    .mode = .required_one,
+                    .flags = &.{ "--verbose", "--json" },
+                },
+            },
+        },
+    },
+};
+```
+
+The initial group modes are `.mutually_exclusive`, `.required_one`, and
+`.required_exactly_one`. `cli.validate` rejects duplicate group names on the
+same command, empty or duplicate member lists, unknown or non-canonical member
+references, partial hidden/deprecated visibility groups, and exclusive groups
+that cannot be satisfied because multiple members are individually required.
+The parser enforces group modes on the matched command path, and generated help,
+man pages, and schema JSON render the group metadata for visible command pages.
 
 Beyond `.bool`, `.string`, and `.int`, flags and positionals support `.float`
 (`f64`), `.duration` (human strings like `10m`/`500ms`/`1h` parsed to
@@ -164,7 +209,7 @@ choices. The set is declared once and drives everything: it auto-populates shell
 completion and renders as `(json|text|yaml)` in help, as the value placeholder
 in man pages, and as a `"choices"` array in the command schema.
 
-## Environment Metadata
+## Environment Fallback
 
 The low-level `parse`/`dispatch` APIs never read the environment. The `cli.run`
 runner, however, applies `Flag.env` as a fallback when you pass an `env_lookup`
@@ -183,11 +228,11 @@ const code = try cli.run(root, .{
 });
 ```
 
-For each global (root) non-bool scalar flag with `.env` set and absent from
-argv, the runner fills the value from the environment before parsing, so
-precedence is `argv` > env > declared default > required-flag error.
-Leaf-specific, bool, and list env flags are not yet covered by the fallback;
-for those, pass environment-derived values explicitly.
+For each visible flag on the resolved command path with `.env` set and absent
+from argv, the runner fills the value from the environment before parsing, so
+precedence is `argv` > env > declared default > required-flag error. Inherited
+root and parent flags, leaf-local flags, bool flags, list flags, and scalar
+value flags all flow through the existing parser coercion and validation.
 
 ## Completion Scripts
 
@@ -208,6 +253,10 @@ Flags and positionals can also declare static value completions:
 Static value choices are embedded directly into generated bash, zsh, and fish
 scripts. File and directory completions use each shell's native file completion
 behavior where possible.
+
+Value completion covers separated values, long equals forms such as
+`--mode=j`, and short value forms such as `-m j` or `-mj`. Flag values consumed
+for completion do not become command-path tokens.
 
 For values only known at runtime, declare a dynamic completion callback:
 
@@ -246,53 +295,109 @@ Manual-only content belongs in `Cmd.doc`. Examples, exit statuses, notes, and
 see-also references enrich generated man pages but do not affect parsing,
 dispatch, or generated argument types.
 
-`Flag.env` renders in the man page ENVIRONMENT section as metadata only. The
-parser still does not read environment variables, and generated text says so
-explicitly.
+`Flag.env` renders in the man page ENVIRONMENT section as a `cli.run` fallback
+source. The parser still does not read environment variables, and generated
+text says so explicitly.
 
-Downstream projects can write generated pages from an opt-in build step. A
-common shape is a tiny generator executable that imports the application's
-command tree, calls `cli.artifacts`, and writes files under caller-provided
-output directories:
+## Packaging Artifacts
+
+Downstream projects can write generated package artifacts from an opt-in build
+or packaging step. A common shape is a tiny generator executable that
+imports the application's command tree, calls `cli.artifacts`, and hands each
+artifact to project-owned staging code:
 
 ```zig
-const gen_man = b.addExecutable(.{
-    .name = "gen-man",
-    .root_source_file = b.path("tools/gen_man.zig"),
+const gen_docs = b.addExecutable(.{
+    .name = "gen-docs",
+    .root_source_file = b.path("tools/gen_docs.zig"),
     .target = target,
     .optimize = optimize,
 });
-gen_man.root_module.addImport("cli", etc_cli_dep.module("cli"));
+gen_docs.root_module.addImport("cli", etc_cli_dep.module("cli"));
 
-const run_gen_man = b.addRunArtifact(gen_man);
-run_gen_man.addArg("zig-out/share/man/man1");
+const run_gen_docs = b.addRunArtifact(gen_docs);
+run_gen_docs.addArg("zig-out/package-root");
 
-const man_step = b.step("man", "Generate man pages");
-man_step.dependOn(&run_gen_man.step);
+const docs_step = b.step("dist-docs", "Stage package artifacts");
+docs_step.dependOn(&run_gen_docs.step);
 ```
 
-The generator executable can then write deterministic artifacts:
+The generator executable can then stage deterministic man pages, shell
+completions, and schema artifacts. The artifact values are plain data plus
+advisory metadata; the downstream helper decides whether to create directories,
+write files, gzip man pages, or translate the hint for a package manager:
 
 ```zig
 const man_pages = comptime cli.artifacts.allManPages(root, .{});
 for (man_pages) |artifact| {
-    try man_dir.writeFile(.{ .sub_path = artifact.name, .data = artifact.data });
+    try stageArtifact(allocator, staging_dir, artifact);
 }
 
-const bash = comptime cli.artifacts.completionScript(root, .bash);
-try completion_dir.writeFile(.{ .sub_path = bash.name, .data = bash.data });
+try stageArtifact(
+    allocator,
+    staging_dir,
+    comptime cli.artifacts.completionScript(root, .bash),
+);
+try stageArtifact(
+    allocator,
+    staging_dir,
+    comptime cli.artifacts.completionScript(root, .zsh),
+);
+try stageArtifact(
+    allocator,
+    staging_dir,
+    comptime cli.artifacts.completionScript(root, .fish),
+);
+try stageArtifact(
+    allocator,
+    staging_dir,
+    comptime cli.artifacts.schemaJson(root, .{}),
+);
+```
 
-const schema = comptime cli.artifacts.schemaJson(root, .{});
-try schema_dir.writeFile(.{ .sub_path = schema.name, .data = schema.data });
+One possible staging helper can consume all public artifact fields while keeping
+install policy outside `etc-cli`:
+
+```zig
+fn stageArtifact(
+    allocator: std.mem.Allocator,
+    staging_dir: std.fs.Dir,
+    artifact: cli.artifacts.Artifact,
+) !void {
+    const destination = artifact.destination_hint;
+    if (destination.len == 0) return error.MissingDestinationHint;
+
+    const package_section = switch (artifact.category) {
+        .man_page => "manuals",
+        .bash_completion, .zsh_completion, .fish_completion => "completions",
+        .schema_json => "schemas",
+        .unknown => "misc",
+    };
+
+    try recordPackageEntry(.{
+        .section = package_section,
+        .destination = destination,
+        .name = artifact.name,
+    });
+
+    try staging_dir.makePath(destination);
+    const sub_path = try std.fs.path.join(
+        allocator,
+        &.{ destination, artifact.name },
+    );
+    defer allocator.free(sub_path);
+
+    try staging_dir.writeFile(.{ .sub_path = sub_path, .data = artifact.data });
+}
 ```
 
 Artifact naming is deterministic: man pages use `tool.1` and
 `tool-subcommand.1`, completions use `tool.bash`, `_tool`, and `tool.fish`, and
 schema output uses `tool.schema.json`. `etc-cli` intentionally returns plain
-text and does not install, compress, or write artifacts during normal tests.
-Packaging code should decide output directories, gzip policy, and installation
-locations such as `share/man/man1`, bash-completion, zsh functions, fish vendor
-completions, or schema collection directories.
+text and never installs, compresses, or writes artifacts on its own. The
+`destination_hint` values are conventional defaults such as `share/man/man1`,
+bash-completion, zsh functions, fish vendor completions, and schema collection
+directories; package recipes may map them to distribution-specific locations.
 
 ## Command Schema
 
@@ -310,7 +415,15 @@ const schema = comptime cli.schema.json(root, .{
 
 The v1 schema uses a flat command list. Each command entry includes its path,
 full command string, subcommands, flags, positionals, docs, and explicit
-metadata-only env behavior where `Flag.env` is present.
+`cli-run-fallback` env behavior where `Flag.env` is present.
+
+Schema compatibility is explicit: default schema output remains
+`"schemaVersion": 1`, `"layout": "flat"`, and does not emit `commandTree`.
+Consumers that need hierarchy can opt in with `.include_command_tree = true`.
+That option adds a top-level `commandTree` whose nodes reuse the flat command
+metadata and add `children`, while the flat `commands` list remains present.
+Because tree output is additive and explicitly requested, it also keeps
+`"schemaVersion": 1`.
 
 Docs metadata also carries structured project fields for richer generated
 manuals and schemas: `files`, `bugs`, `authors`, `homepage`, `license`,
@@ -322,10 +435,10 @@ They only affect generated documentation and machine-readable catalogs.
 Call `comptime cli.validate(root);` near each command tree declaration. The
 validator rejects duplicate subcommands, duplicate inherited flags, invalid
 command/flag/positional syntax, generated args field-name collisions,
-mismatched default kinds, empty manual metadata entries, and required flags that
-also define defaults. Manual metadata validation covers examples, exit codes,
-notes, see-also entries, files, bugs, and authors so generated docs cannot carry
-blank table rows.
+mismatched default kinds, invalid flag-group declarations, empty manual metadata
+entries, and required flags that also define defaults. Manual metadata
+validation covers examples, exit codes, notes, see-also entries, files, bugs,
+and authors so generated docs cannot carry blank table rows.
 
 Negative validation behavior is covered by compile-fail fixtures under
 `integration_tests/compile_fail/`. The default `zig build test` step runs those
@@ -346,11 +459,18 @@ That command runs source-local unit tests, downstream-style import tests for bot
 `cli` and `etc_cli`, parser contract tests, dispatch tests, completion/help
 tests, man-page generation tests, schema generation tests, and compile-fail
 validation fixtures. Snapshot contract tests pin representative help, man,
-completion, and schema output. If `mandoc` is installed locally, the test step
-also runs strict `mandoc -Tlint` over committed man-page snapshots; any warning
-or error fails the test step. Otherwise that lint gate prints a skip message and
-succeeds. Completion snapshots are linted with `bash -n`, `zsh -n`, and
-`fish -n` when those shells are installed.
+completion, and schema output. Artifact contract tests inspect generated names,
+data, categories, and destination hints, but normal CI/test runs do not create
+install trees or leave staged man-page, completion, or schema files behind.
+Artifact metadata remains advisory for downstream packaging code.
+
+If `mandoc` is installed locally, the test step also runs strict
+`mandoc -Tlint` over committed man-page snapshots; any warning or error fails
+the test step. Otherwise that lint gate prints a skip message and succeeds.
+Completion snapshots are linted with `bash -n`, `zsh -n`, and `fish -n` when
+those shells are installed; missing optional shells print skip messages, but
+missing bash, zsh, or fish snapshot coverage fails the gate. Run that check
+directly with `zig build completion-lint` or `sh scripts/completion_lint.sh`.
 
 See `examples/basic.zig` for a complete command tree and app-runner setup. CI
 matrix guidance lives in `docs/ci.md`; release and API-versioning policy lives

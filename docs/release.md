@@ -25,7 +25,26 @@ diagnostics that downstream tests reasonably match.
 
 Schema JSON includes `schemaVersion`. Increment it when consumers need to branch
 on shape changes. Additive fields may remain on the current version when old
-consumers can ignore them.
+consumers can ignore them. Options that explicitly request extra output, such as
+`include_command_tree`, may keep the current version when the default output
+shape is unchanged; the default flat schema remains version 1 until it changes
+incompatibly.
+
+Additive artifact metadata fields and enum values, including install category
+and destination hints, are compatibility additions. Changing artifact names,
+removing metadata fields, or making the library perform filesystem writes would
+be a breaking packaging-policy change.
+
+Completion improvements that broaden when existing declared value completions
+are offered are additive. Generated script entrypoint names, dynamic
+`__complete` argv shape, and completion artifact filenames are part of the
+public contract.
+
+Validation and parser changes need explicit release notes. Accepting additional
+argv syntax is additive; rejecting declarations or argv that were previously
+documented as valid is breaking. Rejecting invalid, ambiguous, or internally
+inconsistent declarations at comptime is allowed in the `0.1.x` additive series
+when called out in `CHANGELOG.md`.
 
 ## Release Checklist
 

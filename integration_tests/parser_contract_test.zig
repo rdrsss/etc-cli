@@ -145,7 +145,7 @@ test "flag equals syntax supports bool flags" {
     try std.testing.expect(args.force);
 }
 
-test "Flag.env metadata is reserved and does not satisfy required flags" {
+test "Flag.env declarations do not satisfy parser required flags" {
     var detail: cli.Detail = undefined;
     const result = cli.parse(root, &.{ "tool", "env" }, &detail);
     try std.testing.expectError(cli.Parse.MissingRequired, result);

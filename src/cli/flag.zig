@@ -26,6 +26,24 @@ pub const Default = union(Kind) {
     choice: []const u8,
 };
 
+/// Mode for a command-level flag group. Groups are declared on `Cmd` and
+/// reference canonical long flag names visible at that command path.
+pub const FlagGroupMode = enum {
+    mutually_exclusive,
+    required_one,
+    required_exactly_one,
+};
+
+/// Command metadata describing a relationship between multiple visible flags.
+/// `flags` contains canonical long names such as "--json"; aliases and short
+/// forms resolve to those names in validation/enforcement layers.
+pub const FlagGroup = struct {
+    name: []const u8,
+    mode: FlagGroupMode,
+    flags: []const []const u8,
+    desc: []const u8 = "",
+};
+
 /// A flag spec. `long` is the canonical long form (e.g. "--verbose"); `short`
 /// is an optional single-char alias (e.g. 'v' for "-v"). `kind` drives the
 /// generated field's type; `default` provides a fallback when the flag is
@@ -123,6 +141,18 @@ test "ValueType maps Kind to the right Zig type" {
     try std.testing.expectEqual(bool, ValueType(.bool));
     try std.testing.expectEqual([]const u8, ValueType(.string));
     try std.testing.expectEqual(i64, ValueType(.int));
+}
+
+test "FlagGroup declares command-level flag relationships" {
+    const group = FlagGroup{
+        .name = "output-format",
+        .mode = .required_exactly_one,
+        .flags = &.{ "--json", "--yaml", "--text" },
+        .desc = "Choose one output format.",
+    };
+    try std.testing.expectEqual(FlagGroupMode.required_exactly_one, group.mode);
+    try std.testing.expectEqual(@as(usize, 3), group.flags.len);
+    try std.testing.expectEqualStrings("--json", group.flags[0]);
 }
 
 test "flagFieldName strips leading -- and converts hyphens" {

@@ -16,6 +16,14 @@ pub const root = cli.Cmd{
         .{ .long = "--verbose", .short = 'v', .desc = "Verbose output", .kind = .bool, .default = .{ .bool = false } },
         .{ .long = "--color", .kind = .choice, .choices = &.{ "auto", "always", "never" }, .default = .{ .choice = "auto" }, .desc = "When to colorize output" },
     },
+    .flag_groups = &.{
+        .{
+            .name = "display",
+            .mode = .required_one,
+            .flags = &.{ "--verbose", "--color" },
+            .desc = "Choose at least one display control.",
+        },
+    },
     .cmds = &.{
         .{
             .name = "run",
@@ -28,6 +36,14 @@ pub const root = cli.Cmd{
                 .{ .long = "--config", .kind = .path, .desc = "Config file path" },
                 .{ .long = "--tag", .kind = .string, .list = true, .desc = "Repeatable tag" },
                 .{ .long = "--host", .kind = .string, .completion = cli.Completion.dynamic(completeHosts), .desc = "Target host (dynamic)" },
+            },
+            .flag_groups = &.{
+                .{
+                    .name = "run-input",
+                    .mode = .required_one,
+                    .flags = &.{ "--name", "--host" },
+                    .desc = "Choose at least one target input.",
+                },
             },
             .positionals = &.{
                 .{ .name = "target", .desc = "Target id", .kind = .string },
@@ -57,12 +73,28 @@ pub const inherited_help_root = cli.Cmd{
             .flags = &.{
                 .{ .long = "--profile", .kind = .string, .desc = "Profile name" },
             },
+            .flag_groups = &.{
+                .{
+                    .name = "group-scope",
+                    .mode = .required_one,
+                    .flags = &.{ "--global", "--profile" },
+                    .desc = "Choose a global or profile scope.",
+                },
+            },
             .cmds = &.{
                 .{
                     .name = "run",
                     .desc = "Leaf command",
                     .flags = &.{
                         .{ .long = "--count", .short = 'c', .kind = .int, .default = .{ .int = 1 }, .desc = "Run count" },
+                    },
+                    .flag_groups = &.{
+                        .{
+                            .name = "leaf-scope",
+                            .mode = .required_exactly_one,
+                            .flags = &.{ "--profile", "--count" },
+                            .desc = "Choose exactly one leaf scope.",
+                        },
                     },
                 },
             },

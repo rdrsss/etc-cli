@@ -1,6 +1,9 @@
 const std = @import("std");
 const cli = @import("cli");
 
+const PublicFlagGroup = cli.FlagGroup;
+const PublicFlagGroupMode = cli.FlagGroupMode;
+
 const cli_root = cli.Cmd{
     .name = "tool",
     .flags = &.{
@@ -13,6 +16,14 @@ const cli_root = cli.Cmd{
             .flags = &.{
                 .{ .long = "--name", .short = 'n', .kind = .string, .required = true },
                 .{ .long = "--count", .short = 'c', .kind = .int, .default = .{ .int = 1 } },
+            },
+            .flag_groups = &.{
+                PublicFlagGroup{
+                    .name = "run-selection",
+                    .mode = PublicFlagGroupMode.required_one,
+                    .flags = &.{ "--verbose", "--name" },
+                    .desc = "Select a run input.",
+                },
             },
             .positionals = &.{
                 .{ .name = "target", .kind = .string, .required = false },
@@ -42,6 +53,9 @@ test "consumer can import cli module name and parse a command tree" {
     try std.testing.expectEqual(@as(i64, 3), args.count);
     try std.testing.expect(args.target != null);
     try std.testing.expectEqualStrings("pkg", args.target.?);
+    try std.testing.expectEqual(@as(usize, 1), cli_root.cmds[0].flag_groups.len);
+    try std.testing.expectEqual(PublicFlagGroupMode.required_one, cli_root.cmds[0].flag_groups[0].mode);
+    try std.testing.expectEqualStrings("--verbose", cli_root.cmds[0].flag_groups[0].flags[0]);
 
     const help = comptime cli.helpText(cli_root, &.{"run"});
     try std.testing.expect(std.mem.indexOf(u8, help, "--name") != null);

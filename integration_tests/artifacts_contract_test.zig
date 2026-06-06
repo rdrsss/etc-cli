@@ -54,6 +54,35 @@ test "artifact helpers return expected generated content" {
     try expectContains(schema.data, "\"schemaVersion\":1");
 }
 
+test "artifact helpers report install intent metadata" {
+    const man = comptime cli.artifacts.manPage(root, &.{ "group", "run" }, .{});
+    try std.testing.expectEqual(cli.artifacts.Category.man_page, man.category);
+    try std.testing.expectEqualStrings(cli.artifacts.DestinationHint.man_page, man.destination_hint);
+
+    const pages = comptime cli.artifacts.allManPages(root, .{});
+    try std.testing.expectEqual(@as(usize, 3), pages.len);
+    for (pages) |page| {
+        try std.testing.expectEqual(cli.artifacts.Category.man_page, page.category);
+        try std.testing.expectEqualStrings(cli.artifacts.DestinationHint.man_page, page.destination_hint);
+    }
+
+    const bash = comptime cli.artifacts.completionScript(root, .bash);
+    try std.testing.expectEqual(cli.artifacts.Category.bash_completion, bash.category);
+    try std.testing.expectEqualStrings(cli.artifacts.DestinationHint.bash_completion, bash.destination_hint);
+
+    const zsh = comptime cli.artifacts.completionScript(root, .zsh);
+    try std.testing.expectEqual(cli.artifacts.Category.zsh_completion, zsh.category);
+    try std.testing.expectEqualStrings(cli.artifacts.DestinationHint.zsh_completion, zsh.destination_hint);
+
+    const fish = comptime cli.artifacts.completionScript(root, .fish);
+    try std.testing.expectEqual(cli.artifacts.Category.fish_completion, fish.category);
+    try std.testing.expectEqualStrings(cli.artifacts.DestinationHint.fish_completion, fish.destination_hint);
+
+    const schema = comptime cli.artifacts.schemaJson(root, .{});
+    try std.testing.expectEqual(cli.artifacts.Category.schema_json, schema.category);
+    try std.testing.expectEqualStrings(cli.artifacts.DestinationHint.schema_json, schema.destination_hint);
+}
+
 test "normal helper usage is filesystem-free" {
     const schema = comptime cli.artifacts.schemaJson(root, .{});
     try std.testing.expect(schema.data.len > 0);

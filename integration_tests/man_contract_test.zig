@@ -40,9 +40,9 @@ const root = cli.Cmd{
                             "Generated manual metadata does not change parser behavior.",
                         },
                         .see_also = &.{ "tool(1)", "tool-group(1)" },
-                        .files = &.{ "~/.config/tool/config.toml" },
-                        .bugs = &.{ "Report issues at https://example.test/tool/issues." },
-                        .authors = &.{ "Example Maintainers" },
+                        .files = &.{"~/.config/tool/config.toml"},
+                        .bugs = &.{"Report issues at https://example.test/tool/issues."},
+                        .authors = &.{"Example Maintainers"},
                         .homepage = "https://example.test/tool",
                         .license = "MIT",
                         .copyright = "Copyright 2026 Example Maintainers.",
@@ -97,7 +97,8 @@ test "subcommand man page includes inherited and local flags" {
     try expectContains(text, "type: int, value: N, default: 1");
     try expectContains(text, ".SH ENVIRONMENT");
     try expectContains(text, ".B TOOL_NAME");
-    try expectContains(text, "Fallback source for \\-\\-name when invoked through the cli.run runner");
+    try expectContains(text, "Fallback source for \\-\\-name when invoked through cli.run");
+    try expectContains(text, "resolved command path");
     try expectContains(text, ".SH ARGUMENTS");
     try expectContains(text, ".I target");
     try expectContains(text, ".I label");

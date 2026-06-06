@@ -2,19 +2,9 @@
 # tool zsh completion (auto-generated)
 
 _tool() {
-    local cur prev path i
+    local cur prev path i value_prefix
     cur="${words[CURRENT]}"
     prev="${words[CURRENT-1]}"
-    case "$prev" in
-        --color)
-            _values 'values' "auto" "always" "never"; return ;;
-        --format)
-            _values 'values' "json" "text" "yaml"; return ;;
-        --config)
-            _files; return ;;
-        --host)
-            compadd -- ${(f)"$("$words[1]" __complete --host "$cur")"}; return ;;
-    esac
 
     path=""
     for (( i=2; i<CURRENT; i++ )); do
@@ -61,6 +51,54 @@ _tool() {
                 ;;
         esac
     done
+    case "$path" in
+        "")
+            case "$cur" in
+                --color=*)
+                    value_prefix="${cur#*=}"
+                    compset -P "${cur%%=*}="
+                    _values 'values' "auto" "always" "never"; return ;;
+            esac
+            case "$prev" in
+                --color)
+                    _values 'values' "auto" "always" "never"; return ;;
+            esac
+            ;;
+        "run")
+            case "$cur" in
+                --color=*)
+                    value_prefix="${cur#*=}"
+                    compset -P "${cur%%=*}="
+                    _values 'values' "auto" "always" "never"; return ;;
+                --format=*)
+                    value_prefix="${cur#*=}"
+                    compset -P "${cur%%=*}="
+                    _values 'values' "json" "text" "yaml"; return ;;
+                -f*)
+                    value_prefix="${cur[3,-1]}"
+                    compset -P "-f"
+                    _values 'values' "json" "text" "yaml"; return ;;
+                --config=*)
+                    value_prefix="${cur#*=}"
+                    compset -P "${cur%%=*}="
+                    _files; return ;;
+                --host=*)
+                    value_prefix="${cur#*=}"
+                    compset -P "${cur%%=*}="
+                    compadd -- ${(f)"$("$words[1]" __complete --host "$value_prefix")"}; return ;;
+            esac
+            case "$prev" in
+                --color)
+                    _values 'values' "auto" "always" "never"; return ;;
+                --format|-f)
+                    _values 'values' "json" "text" "yaml"; return ;;
+                --config)
+                    _files; return ;;
+                --host)
+                    compadd -- ${(f)"$("$words[1]" __complete --host "$cur")"}; return ;;
+            esac
+            ;;
+    esac
 
     local -a cmds flags values
     case "$path" in

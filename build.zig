@@ -206,6 +206,18 @@ pub fn build(b: *std.Build) void {
     });
     const run_parser_expansion_contract_tests = b.addRunArtifact(parser_expansion_contract_tests);
 
+    const flag_group_parser_contract_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("integration_tests/flag_group_parser_contract_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "cli", .module = cli_mod },
+            },
+        }),
+    });
+    const run_flag_group_parser_contract_tests = b.addRunArtifact(flag_group_parser_contract_tests);
+
     const snapshot_contract_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("integration_tests/snapshot_contract_test.zig"),
@@ -239,6 +251,8 @@ pub fn build(b: *std.Build) void {
     run_mandoc_lint.setCwd(b.path("."));
     const run_completion_lint = b.addSystemCommand(&.{ "sh", "scripts/completion_lint.sh" });
     run_completion_lint.setCwd(b.path("."));
+    const completion_lint_step = b.step("completion-lint", "Syntax-check generated completion snapshots for installed shells");
+    completion_lint_step.dependOn(&run_completion_lint.step);
 
     // `zig build snapshots-update` regenerates the golden files under
     // integration_tests/snapshots/ from the shared snapshot_tree.zig.
@@ -275,9 +289,10 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_alias_visibility_contract_tests.step);
     test_step.dependOn(&run_completion_value_contract_tests.step);
     test_step.dependOn(&run_parser_expansion_contract_tests.step);
+    test_step.dependOn(&run_flag_group_parser_contract_tests.step);
     test_step.dependOn(&run_snapshot_contract_tests.step);
     test_step.dependOn(&run_parser_property_tests.step);
     test_step.dependOn(&run_compile_fail_tests.step);
     test_step.dependOn(&run_mandoc_lint.step);
-    test_step.dependOn(&run_completion_lint.step);
+    test_step.dependOn(completion_lint_step);
 }

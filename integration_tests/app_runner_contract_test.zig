@@ -29,6 +29,7 @@ const root = cli.Cmd{
             .desc = "Run handler",
             .flags = &.{
                 .{ .long = "--name", .kind = .string, .required = true },
+                .{ .long = "--old-name", .kind = .string, .deprecated = .{ .replacement = "--name", .message = "renamed" } },
             },
             .run = cli.handler(handleRun),
         },
@@ -597,6 +598,75 @@ test "runner warns on stderr when a deprecated command is invoked" {
     try std.testing.expectEqual(@as(u8, 0), code);
     try expectContains(stderr.buffered(), "'legacy' is deprecated");
     try expectContains(stderr.buffered(), "use run");
+}
+
+test "runner warns on stderr when a deprecated flag is used" {
+    reset();
+    var stdout_buf: [4096]u8 = undefined;
+    var stderr_buf: [1024]u8 = undefined;
+    var stdout = std.Io.Writer.fixed(&stdout_buf);
+    var stderr = std.Io.Writer.fixed(&stderr_buf);
+
+    const code = try cli.run(root, .{
+        .argv = &.{ "tool", "run", "--name", "x", "--old-name", "y" },
+        .stdout = &stdout,
+        .stderr = &stderr,
+    });
+    try std.testing.expectEqual(@as(u8, 0), code);
+    try expectContains(stderr.buffered(), "'--old-name' is deprecated");
+    try expectContains(stderr.buffered(), "use --name");
+}
+
+test "runner stays quiet when a deprecated flag is absent" {
+    reset();
+    var stdout_buf: [4096]u8 = undefined;
+    var stderr_buf: [1024]u8 = undefined;
+    var stdout = std.Io.Writer.fixed(&stdout_buf);
+    var stderr = std.Io.Writer.fixed(&stderr_buf);
+
+    const code = try cli.run(root, .{
+        .argv = &.{ "tool", "run", "--name", "x" },
+        .stdout = &stdout,
+        .stderr = &stderr,
+    });
+    try std.testing.expectEqual(@as(u8, 0), code);
+    try std.testing.expectEqual(@as(usize, 0), stderr.buffered().len);
+}
+
+fn noColorLookup(name: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, name, "NO_COLOR")) return "1";
+    return null;
+}
+
+fn runHelpColor(color: cli.ColorMode, stdout_tty: bool, env_lookup: ?*const fn ([]const u8) ?[]const u8, buf: []u8) []const u8 {
+    var stdout = std.Io.Writer.fixed(buf);
+    var stderr_buf: [256]u8 = undefined;
+    var stderr = std.Io.Writer.fixed(&stderr_buf);
+    _ = cli.run(root, .{
+        .argv = &.{ "tool", "run", "--help" },
+        .stdout = &stdout,
+        .stderr = &stderr,
+        .color = color,
+        .stdout_tty = stdout_tty,
+        .env_lookup = env_lookup,
+    }) catch unreachable;
+    return stdout.buffered();
+}
+
+test "runner color policy: always/never/auto resolve as expected" {
+    var buf: [8192]u8 = undefined;
+    const esc = "\x1b[";
+
+    // always → colorized regardless of TTY.
+    try expectContains(runHelpColor(.always, false, null, &buf), esc);
+    // never → never colorized, even on a TTY.
+    try std.testing.expect(std.mem.indexOf(u8, runHelpColor(.never, true, null, &buf), esc) == null);
+    // auto + no TTY → plain.
+    try std.testing.expect(std.mem.indexOf(u8, runHelpColor(.auto, false, null, &buf), esc) == null);
+    // auto + TTY → colorized.
+    try expectContains(runHelpColor(.auto, true, null, &buf), esc);
+    // auto + TTY but NO_COLOR set → plain.
+    try std.testing.expect(std.mem.indexOf(u8, runHelpColor(.auto, true, noColorLookup, &buf), esc) == null);
 }
 
 fn expectContains(haystack: []const u8, needle: []const u8) !void {

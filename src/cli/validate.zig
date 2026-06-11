@@ -82,6 +82,7 @@ fn validateNode(comptime node: cmd_mod.Cmd, comptime parent_flags: []const flag.
         validateFlagAliases(node.name, f);
         validateReservedFlagName(node.name, f);
         validateChoices(node.name, f);
+        validateCount(node.name, f);
         validateList(node.name, f);
         validateDeprecation("flag", f.long, f.deprecated);
         validateCompletion("flag", f.long, f.completion);
@@ -363,6 +364,25 @@ fn validateList(comptime command_name: []const u8, comptime f: flag.Flag) void {
     }
     if (f.default != null) {
         @compileError("validate: list flag '" ++ f.long ++ "' in command '" ++ command_name ++ "' cannot define a default; the empty list is the default");
+    }
+}
+
+fn validateCount(comptime command_name: []const u8, comptime f: flag.Flag) void {
+    if (!f.count) return;
+    if (f.kind != .bool) {
+        @compileError("validate: count flag '" ++ f.long ++ "' in command '" ++ command_name ++ "' must be kind .bool; it takes no value");
+    }
+    if (f.list) {
+        @compileError("validate: flag '" ++ f.long ++ "' in command '" ++ command_name ++ "' cannot be both count and list");
+    }
+    if (f.required) {
+        @compileError("validate: count flag '" ++ f.long ++ "' in command '" ++ command_name ++ "' cannot be required; it defaults to 0");
+    }
+    if (f.default != null) {
+        @compileError("validate: count flag '" ++ f.long ++ "' in command '" ++ command_name ++ "' cannot define a default; 0 is the default");
+    }
+    if (f.value_name != null) {
+        @compileError("validate: count flag '" ++ f.long ++ "' in command '" ++ command_name ++ "' cannot define value_name; it takes no value");
     }
 }
 

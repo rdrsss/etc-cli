@@ -185,6 +185,7 @@ fn renderFlag(comptime f: flag_mod.Flag, comptime source: []const u8, comptime o
         out = out ++ "\"kind\":" ++ jsonString(@tagName(f.kind)) ++ ",";
         out = out ++ "\"choices\":" ++ renderStringArray(f.choices) ++ ",";
         out = out ++ "\"list\":" ++ boolText(f.list) ++ ",";
+        out = out ++ "\"count\":" ++ boolText(f.count) ++ ",";
         out = out ++ "\"required\":" ++ boolText(f.required) ++ ",";
         out = out ++ "\"source\":" ++ jsonString(source) ++ ",";
         out = out ++ "\"valueName\":";
@@ -436,6 +437,11 @@ fn jsonString(comptime text: []const u8) []const u8 {
                 '\n' => "\\n",
                 '\r' => "\\r",
                 '\t' => "\\t",
+                0x08 => "\\b",
+                0x0c => "\\f",
+                // Remaining C0 control characters have no short escape and
+                // are invalid raw in a JSON string; emit a \u00XX escape.
+                0x00...0x07, 0x0b, 0x0e...0x1f => std.fmt.comptimePrint("\\u{x:0>4}", .{c}),
                 else => &[_]u8{c},
             };
         }
@@ -498,4 +504,19 @@ test "json escapes strings" {
     };
     const text = comptime json(root, .{});
     try std.testing.expect(std.mem.indexOf(u8, text, "quote \\\" slash \\\\ newline\\n") != null);
+}
+
+test "json escapes control characters" {
+    const root = cmd_mod.Cmd{
+        .name = "ctrl",
+        .desc = "bell\x07 back\x08 form\x0c vtab\x0b unit\x1f",
+    };
+    const text = comptime json(root, .{});
+    try std.testing.expect(std.mem.indexOf(u8, text, "bell\\u0007") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "back\\b") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "form\\f") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "vtab\\u000b") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "unit\\u001f") != null);
+    // No raw control byte should survive into the output.
+    try std.testing.expect(std.mem.indexOfScalar(u8, text, 0x07) == null);
 }

@@ -60,6 +60,11 @@ pub const Flag = struct {
     /// field is `[]const []const u8` (default empty). v1 supports list elements
     /// of kind `.string`, `.path`, or `.choice`. A list flag takes no `default`.
     list: bool = false,
+    /// When true the flag takes no value and counts its occurrences: `-vvv`
+    /// (or `--verbose --verbose --verbose`) yields `3`. The generated field is
+    /// `u32` (default `0`). Requires `kind == .bool`, and is mutually exclusive
+    /// with `list`, `default`, `required`, `choices`, and `--no-` negation.
+    count: bool = false,
     /// Manual/help placeholder for non-bool flag values, such as PATH or
     /// COUNT. Parsing is still driven only by `kind`.
     value_name: ?[]const u8 = null,

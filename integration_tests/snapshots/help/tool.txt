@@ -6,10 +6,11 @@ USAGE:
   tool [flags] <command>
 
 COMMANDS:
-  run             Run target
+  run, r          Run target
 
 FLAGS:
   --verbose, -v         (bool) default=false — Verbose output
+  --debug, -d           (count) (repeatable) — Increase debug verbosity (repeatable)
   --color               (auto|always|never) default="auto" — When to colorize output
 
 FLAG GROUPS:

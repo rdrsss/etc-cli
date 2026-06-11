@@ -56,6 +56,11 @@ pub fn main(init: std.process.Init) !void {
         .stderr = &stderr_writer.interface,
         .version = "0.1.0",
         .about = "Example application built with etc-cli.",
+        // Colorize help only when stdout is a real terminal. The writer hides
+        // the fd, so we detect TTY state here and hand it to the runner; `.auto`
+        // also honors NO_COLOR when an env_lookup is provided.
+        .color = .auto,
+        .stdout_tty = std.Io.File.stdout().isTty(init.io) catch false,
     });
     std.process.exit(code);
 }

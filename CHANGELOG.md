@@ -8,6 +8,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Colorized help output. `help.Options` gains `color: bool`, which wraps
+  section headers (bold) and command/flag names (cyan) in ANSI escapes at
+  comptime; column alignment is computed from the uncolored label so layout is
+  unchanged. `cli.run` gains `color: ColorMode` (`.auto`/`.always`/`.never`,
+  default `.auto`) and `stdout_tty: bool`; `.auto` colorizes only when
+  `stdout_tty` is set and `NO_COLOR` is absent (resolved via `env_lookup`). The
+  runner selects the colored or plain comptime variant at runtime.
+- Count flags via `Flag.count = true`: a value-less flag that accumulates its
+  occurrences (`-vvv` or `--verbose --verbose --verbose` yields `3`). The
+  generated field is `u32` (default `0`, saturating). Requires `kind == .bool`
+  and is mutually exclusive with `list`, `default`, `required`, `value_name`,
+  and `--no-` negation (all enforced at comptime). Renders as `count`
+  `(repeatable)` in help/man and `"count": true` in the schema.
 - Command-level flag groups via `FlagGroup`, `FlagGroupMode`, and
   `Cmd.flag_groups`. Groups support `.mutually_exclusive`, `.required_one`, and
   `.required_exactly_one`, validate canonical visible flag members at comptime,
@@ -29,6 +42,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Packaging artifact helpers now expose advisory `category` and
   `destination_hint` metadata for man pages, bash/zsh/fish completions, and
   schema artifacts without installing, compressing, or writing files.
+- Generated help and man pages now render command and flag `aliases` alongside
+  the canonical name (e.g. `status, st, stat` and `--output, -o, --out`),
+  matching what completion and schema already exposed.
+- `cli.run` now emits a stderr deprecation warning for each deprecated *flag*
+  actually used on the command line, mirroring the existing command-level
+  warning. The parser records used-deprecated flags in a module-static buffer
+  exposed as `cli.deprecatedFlagsSeen()`; `parse`/`dispatch` stay quiet and
+  env-unaware.
+
+### Fixed
+
+- Schema JSON now escapes C0 control characters in description text (`\b`,
+  `\f`, and `\u00XX` for the rest) instead of emitting them raw, which produced
+  invalid JSON.
 
 ### Changed
 

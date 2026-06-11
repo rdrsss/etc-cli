@@ -13,7 +13,7 @@ _tool() {
                 (( i++ ))
                 ;;
 
-            --name)
+            --name|--target-name)
                 (( i++ ))
                 ;;
 
@@ -109,12 +109,12 @@ _tool() {
     case "$path" in
         "")
             cmds="run"
-            flags="--verbose -v --color --help -h"
+            flags="--verbose -v --debug -d --color --help -h"
             values=""
             ;;
         "run")
             cmds=""
-            flags="--verbose -v --color --name --format -f --rate --interval --config --tag --host --help -h"
+            flags="--verbose -v --debug -d --color --name --format -f --rate --interval --config --tag --host --help -h"
             values=""
             ;;
         *)

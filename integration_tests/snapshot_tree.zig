@@ -14,6 +14,7 @@ pub const root = cli.Cmd{
     .desc = "Snapshot tool",
     .flags = &.{
         .{ .long = "--verbose", .short = 'v', .desc = "Verbose output", .kind = .bool, .default = .{ .bool = false } },
+        .{ .long = "--debug", .short = 'd', .kind = .bool, .count = true, .desc = "Increase debug verbosity (repeatable)" },
         .{ .long = "--color", .kind = .choice, .choices = &.{ "auto", "always", "never" }, .default = .{ .choice = "auto" }, .desc = "When to colorize output" },
     },
     .flag_groups = &.{
@@ -27,9 +28,10 @@ pub const root = cli.Cmd{
     .cmds = &.{
         .{
             .name = "run",
+            .aliases = &.{"r"},
             .desc = "Run target",
             .flags = &.{
-                .{ .long = "--name", .kind = .string, .desc = "Target name", .value_name = "NAME" },
+                .{ .long = "--name", .aliases = &.{"--target-name"}, .kind = .string, .desc = "Target name", .value_name = "NAME" },
                 .{ .long = "--format", .short = 'f', .kind = .choice, .choices = &.{ "json", "text", "yaml" }, .default = .{ .choice = "text" }, .desc = "Output format" },
                 .{ .long = "--rate", .kind = .float, .default = .{ .float = 1.5 }, .desc = "Sampling rate" },
                 .{ .long = "--interval", .kind = .duration, .default = .{ .duration = 600 * 1_000_000_000 }, .desc = "Poll interval" },

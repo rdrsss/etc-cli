@@ -137,7 +137,9 @@ fn renderPage(
             for (node.cmds) |child| {
                 if (!visibleCmd(child, options)) continue;
                 out = out ++ ".TP\n";
-                out = out ++ ".B " ++ roff(child.name) ++ "\n";
+                out = out ++ ".B " ++ roff(child.name);
+                for (child.aliases) |alias| out = out ++ ", " ++ roff(alias);
+                out = out ++ "\n";
                 if (child.desc.len > 0) out = out ++ roff(child.desc) ++ "\n";
                 if (child.deprecated) |d| out = out ++ roff(deprecationText(d)) ++ "\n";
             }
@@ -259,9 +261,13 @@ fn renderFlag(comptime f: flag_mod.Flag) []const u8 {
             out = out ++ ", " ++ roffOption("-" ++ &[_]u8{s});
             if (value.len > 0) out = out ++ " " ++ value;
         }
+        for (f.aliases) |alias| {
+            out = out ++ ", " ++ roffOption(alias);
+            if (value.len > 0) out = out ++ " " ++ value;
+        }
         out = out ++ "\n";
-        out = out ++ "type: " ++ @tagName(f.kind);
-        if (f.list) out = out ++ ", repeatable";
+        out = out ++ "type: " ++ (if (f.count) "count" else @tagName(f.kind));
+        if (f.list or f.count) out = out ++ ", repeatable";
         if (value.len > 0) out = out ++ ", value: " ++ value;
         if (f.required) out = out ++ ", required";
         if (f.default) |d| out = out ++ ", default: " ++ renderDefault(d);
@@ -576,6 +582,27 @@ test "page renders inherited flags for leaf commands" {
     try std.testing.expect(std.mem.indexOf(u8, text, ".SH FLAG GROUPS") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, ".B run-input") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, "at least one required: \\-\\-verbose, \\-\\-count") != null);
+}
+
+test "page surfaces command and flag aliases" {
+    const root = cmd_mod.Cmd{
+        .name = "tool",
+        .cmds = &.{
+            .{
+                .name = "status",
+                .aliases = &.{ "st", "stat" },
+                .desc = "Show status",
+                .flags = &.{
+                    .{ .long = "--output", .short = 'o', .aliases = &.{"--out"}, .desc = "Output", .kind = .string },
+                },
+            },
+        },
+    };
+    const root_text = comptime page(root, &.{}, .{});
+    try std.testing.expect(std.mem.indexOf(u8, root_text, ".B status, st, stat") != null);
+
+    const leaf_text = comptime page(root, &.{"status"}, .{});
+    try std.testing.expect(std.mem.indexOf(u8, leaf_text, "\\-\\-out") != null);
 }
 
 test "page accepts sections other than 1" {

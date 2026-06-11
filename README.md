@@ -90,7 +90,29 @@ Runner policy is deliberately narrow: `--help`, no-handler help, `--version`,
 and `--about` write stdout and return `0`; parse errors write stderr and return
 `2`; handler errors write stderr and return `1`. The runner also owns the
 `Flag.env` fallback described below and warns on stderr when the invoked command
-is deprecated.
+or a used flag is deprecated.
+
+### Colorized help
+
+`cli.run` can colorize generated help. Because help is built at comptime, the
+colored and plain forms are distinct `.rodata` strings and the runner picks one
+at runtime:
+
+```zig
+const code = try cli.run(root, .{
+    .argv = argv,
+    .stdout = &stdout_writer.interface,
+    .stderr = &stderr_writer.interface,
+    .color = .auto, // .auto | .always | .never (default .auto)
+    .stdout_tty = std.Io.File.stdout().isTty(init.io) catch false,
+});
+```
+
+`.auto` colorizes only when `stdout_tty` is true and `NO_COLOR` is unset
+(resolved through `env_lookup` when provided). The writer abstraction hides the
+file descriptor, so the caller reports TTY state via `stdout_tty`. Section
+headers render bold and command/flag names render in cyan; column alignment is
+computed from the uncolored label, so layout is identical with or without color.
 
 ## Aliases and Visibility
 
@@ -142,6 +164,18 @@ reject it as `InvalidValue`. List-valued flags are supported for `.string`,
 generate `[]const []const u8` fields with an empty default. Optional
 positionals can declare defaults, which fill the generated field when the slot
 is omitted.
+
+Count flags accumulate their occurrences instead of erroring on repeats. Set
+`.count = true` on a `.bool` flag and its generated field becomes a `u32`
+(default `0`) that increments once per occurrence — `-vvv` and
+`--verbose --verbose --verbose` both yield `3`:
+
+```zig
+.{ .long = "--verbose", .short = 'v', .kind = .bool, .count = true, .desc = "Increase verbosity" }
+```
+
+Count flags take no value and have no `--no-` negation; they are mutually
+exclusive with `list`, `default`, `required`, and `value_name`.
 
 Commands can also declare flag groups as command metadata. Groups reference the
 canonical long names of flags visible at that command path, including inherited

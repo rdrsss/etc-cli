@@ -8,6 +8,7 @@ const root = cli.Cmd{
             .name = "act",
             .flags = &.{
                 .{ .long = "--force", .short = 'f', .kind = .bool, .default = .{ .bool = false } },
+                .{ .long = "--verbose", .short = 'v', .kind = .bool, .count = true },
                 .{ .long = "--name", .short = 'n', .kind = .string, .required = true },
                 .{ .long = "--count", .short = 'c', .kind = .int, .default = .{ .int = 1 } },
             },
@@ -143,6 +144,47 @@ test "flag equals syntax supports bool flags" {
     const result = cli.parse(root, &.{ "tool", "act", "--name=n", "--force=true", "1" }, &detail);
     const args = (try result).match.act;
     try std.testing.expect(args.force);
+}
+
+test "count flag accumulates occurrences instead of erroring on repeats" {
+    // Absent → 0.
+    {
+        var detail: cli.Detail = undefined;
+        const result = try cli.parse(root, &.{ "tool", "act", "--name", "n", "1" }, &detail);
+        try std.testing.expectEqual(@as(u32, 0), result.match.act.verbose);
+    }
+    // Repeated long form accumulates.
+    {
+        var detail: cli.Detail = undefined;
+        const result = try cli.parse(root, &.{ "tool", "act", "--name", "n", "--verbose", "--verbose", "1" }, &detail);
+        try std.testing.expectEqual(@as(u32, 2), result.match.act.verbose);
+    }
+    // Short bundle increments once per occurrence.
+    {
+        var detail: cli.Detail = undefined;
+        const result = try cli.parse(root, &.{ "tool", "act", "--name", "n", "-vvv", "1" }, &detail);
+        try std.testing.expectEqual(@as(u32, 3), result.match.act.verbose);
+    }
+    // Single short form.
+    {
+        var detail: cli.Detail = undefined;
+        const result = try cli.parse(root, &.{ "tool", "act", "--name", "n", "-v", "1" }, &detail);
+        try std.testing.expectEqual(@as(u32, 1), result.match.act.verbose);
+    }
+}
+
+test "count flag mixes with other bool flags in a short bundle" {
+    var detail: cli.Detail = undefined;
+    const result = try cli.parse(root, &.{ "tool", "act", "--name", "n", "-vvf", "1" }, &detail);
+    const args = result.match.act;
+    try std.testing.expectEqual(@as(u32, 2), args.verbose);
+    try std.testing.expect(args.force);
+}
+
+test "count flag rejects --no- negation as an unknown flag" {
+    var detail: cli.Detail = undefined;
+    const result = cli.parse(root, &.{ "tool", "act", "--name", "n", "--no-verbose", "1" }, &detail);
+    try std.testing.expectError(cli.Parse.UnknownFlag, result);
 }
 
 test "Flag.env declarations do not satisfy parser required flags" {

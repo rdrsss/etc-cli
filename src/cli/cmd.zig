@@ -333,6 +333,14 @@ fn fillFlagField(
         attrs_out.* = .{ .default_value_ptr = @ptrCast(&empty_slice) };
         return;
     }
+    if (f.count) {
+        // Count flag: field is an occurrence counter, default 0.
+        const zero: u32 = 0;
+        name_out.* = flag.flagFieldName(f);
+        type_out.* = u32;
+        attrs_out.* = .{ .default_value_ptr = @ptrCast(&zero) };
+        return;
+    }
     const T = flag.ValueType(f.kind);
     const FieldT = if (f.required or f.default != null) T else ?T;
     const default_value: ?*const anyopaque = blk: {

@@ -14,6 +14,13 @@ pub const ExitCodes = struct {
     handler_error: u8 = 1,
 };
 
+/// Controls whether generated help is colorized. `.auto` (the default)
+/// resolves to color only when stdout is a TTY and `NO_COLOR` is unset;
+/// `.always`/`.never` force the decision. Because the writer abstraction hides
+/// the underlying file descriptor, the caller reports TTY state via
+/// `Options.stdout_tty` (the example program detects it from its stdout file).
+pub const ColorMode = enum { auto, always, never };
+
 pub const Options = struct {
     argv: []const []const u8,
     stdout: *std.Io.Writer,
@@ -36,7 +43,29 @@ pub const Options = struct {
     /// parser/dispatch APIs remain env-unaware. Returned values must outlive
     /// the call (e.g. slices into the process environment).
     env_lookup: ?*const fn (name: []const u8) ?[]const u8 = null,
+    /// Colorization policy for generated help output (stdout). Defaults to
+    /// `.auto`, which only colorizes when `stdout_tty` is true and `NO_COLOR`
+    /// is absent (resolved via `env_lookup` when provided).
+    color: ColorMode = .auto,
+    /// Whether stdout is a terminal. The caller sets this (e.g. from
+    /// `std.posix.isatty` on its stdout fd) because the writer hides the fd.
+    /// Only consulted when `color == .auto`.
+    stdout_tty: bool = false,
 };
+
+/// Resolve the effective help-color decision from the runner options.
+fn useColor(options: Options) bool {
+    return switch (options.color) {
+        .never => false,
+        .always => true,
+        .auto => blk: {
+            if (options.env_lookup) |lookup| {
+                if (lookup("NO_COLOR")) |_| break :blk false;
+            }
+            break :blk options.stdout_tty;
+        },
+    };
+}
 
 /// Module-static backing store for the env-augmented argv. Like the parser's
 /// buffers, the returned slice stays valid until the next `run`; single-
@@ -70,8 +99,7 @@ pub fn run(comptime root: cmd_mod.Cmd, options: Options) anyerror!u8 {
 
     switch (result) {
         .help => |path| {
-            const text = helpForAnyPath(root, path) orelse comptime help_mod.helpText(root, &.{});
-            try options.stdout.print("{s}", .{text});
+            try writeResolvedHelp(root, path, useColor(options), options.stdout);
             try options.stdout.flush();
             return options.exit_codes.success;
         },
@@ -484,15 +512,31 @@ fn hasSubcommand(comptime root: cmd_mod.Cmd, comptime name: []const u8) bool {
     return false;
 }
 
-fn helpForAnyPath(comptime root: cmd_mod.Cmd, runtime_path: []const []const u8) ?[]const u8 {
-    if (runtime_path.len == 0) return comptime help_mod.helpText(root, &.{});
+fn helpForAnyPath(comptime root: cmd_mod.Cmd, runtime_path: []const []const u8, comptime color: bool) ?[]const u8 {
+    if (runtime_path.len == 0) return comptime help_mod.helpTextWithOptions(root, &.{}, .{ .color = color });
     const nodes = comptime cmd_mod.allNodes(root);
     inline for (nodes) |node| {
         if (pathsEqual(node.path, runtime_path)) {
-            return comptime help_mod.helpText(root, node.path);
+            return comptime help_mod.helpTextWithOptions(root, node.path, .{ .color = color });
         }
     }
     return null;
+}
+
+/// Write the help page for `path`, choosing the colored or plain comptime
+/// variant at runtime. Both variants are distinct `.rodata` strings; the
+/// runtime branch selects one.
+fn writeResolvedHelp(
+    comptime root: cmd_mod.Cmd,
+    path: []const []const u8,
+    use_color: bool,
+    writer: *std.Io.Writer,
+) !void {
+    const text = if (use_color)
+        helpForAnyPath(root, path, true) orelse comptime help_mod.helpTextWithOptions(root, &.{}, .{ .color = true })
+    else
+        helpForAnyPath(root, path, false) orelse comptime help_mod.helpTextWithOptions(root, &.{}, .{ .color = false });
+    try writer.print("{s}", .{text});
 }
 
 fn pathsEqual(a: []const []const u8, b: []const []const u8) bool {
@@ -512,11 +556,25 @@ fn invokeMatch(
     inline for (leaves) |leaf| {
         const tag_name = comptime pathToTag(leaf.path);
         if (std.mem.eql(u8, @tagName(std.meta.activeTag(result_union)), tag_name)) {
-            // Warn (once) when the invoked command itself is deprecated. Flag-
-            // level deprecation warnings are a separate follow-up; `dispatch`
-            // (single-writer callback mode) does not emit these.
+            // Warn (once) when the invoked command itself is deprecated.
+            // `dispatch` (single-writer callback mode) does not emit these.
             if (comptime leaf.cmd.deprecated != null) {
                 try emitDeprecation(options.stderr, leaf.cmd.name, leaf.cmd.deprecated.?);
+            }
+            // Warn for each deprecated flag the parse actually matched. The
+            // parser records the canonical long names; we cross-reference the
+            // leaf's visible flags to recover each one's deprecation metadata.
+            const dep_flags = comptime cmd_mod.collectInheritedFlags(root, leaf.path) ++ leaf.cmd.flags;
+            const seen_dep = parser.deprecatedFlagsSeen();
+            inline for (dep_flags) |f| {
+                if (comptime f.deprecated != null) {
+                    for (seen_dep) |seen_long| {
+                        if (std.mem.eql(u8, seen_long, f.long)) {
+                            try emitDeprecation(options.stderr, f.long, f.deprecated.?);
+                            break;
+                        }
+                    }
+                }
             }
             if (leaf.cmd.run) |handler_ptr| {
                 const handler_fn: cmd_mod.HandlerFn = @ptrCast(@alignCast(handler_ptr));
@@ -535,8 +593,7 @@ fn invokeMatch(
                 return options.exit_codes.success;
             }
 
-            const text = comptime help_mod.helpText(root, leaf.path);
-            try options.stdout.print("{s}", .{text});
+            try writeResolvedHelp(root, leaf.path, useColor(options), options.stdout);
             try options.stdout.flush();
             return options.exit_codes.success;
         }

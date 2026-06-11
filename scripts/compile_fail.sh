@@ -55,6 +55,8 @@ run_case integration_tests/compile_fail/unsafe_completion_value.zig "with an uns
 run_case integration_tests/compile_fail/choice_without_choices.zig "must declare at least one entry"
 run_case integration_tests/compile_fail/choices_on_non_choice.zig "declares \`choices\` but kind is not .choice"
 run_case integration_tests/compile_fail/choice_default_not_member.zig "default 'c' is not one of its choices"
+run_case integration_tests/compile_fail/count_non_bool.zig "count flag '--level' in command 'tool' must be kind .bool"
+run_case integration_tests/compile_fail/count_with_list.zig "flag '--verbose' in command 'tool' cannot be both count and list"
 run_case integration_tests/compile_fail/parser_list_flag_limit.zig "parser: a command exceeds the list-flag limit"
 run_case integration_tests/compile_fail/bad_handler_arity.zig "handler must take exactly one parameter"
 run_case integration_tests/compile_fail/bad_handler_param.zig "handler parameter must be"

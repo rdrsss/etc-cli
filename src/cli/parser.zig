@@ -61,6 +61,31 @@ const max_tail_tokens = 512;
 const max_group_error_flags = 256;
 var group_error_flags_buf: [max_group_error_flags][]const u8 = undefined;
 
+/// Module-static record of which deprecated flags the most recent parse
+/// actually matched (by canonical long name). `cli.run` reads this after a
+/// successful parse to emit one warning per used deprecated flag; `parse`
+/// and `dispatch` stay quiet (the warning is a runner-only concern, like
+/// command-level deprecation). Single-threaded by construction, like the
+/// other module-static buffers: consume it before the next parser call.
+const max_deprecated_flags = 64;
+var deprecated_flags_buf: [max_deprecated_flags][]const u8 = undefined;
+var deprecated_flags_len: usize = 0;
+
+/// The deprecated flags (canonical long names) matched by the most recent
+/// `parse`/`dispatch`/`run`. Valid until the next parser invocation.
+pub fn deprecatedFlagsSeen() []const []const u8 {
+    return deprecated_flags_buf[0..deprecated_flags_len];
+}
+
+fn recordDeprecatedFlag(long: []const u8) void {
+    for (deprecated_flags_buf[0..deprecated_flags_len]) |seen_long| {
+        if (std.mem.eql(u8, seen_long, long)) return;
+    }
+    if (deprecated_flags_len >= deprecated_flags_buf.len) return;
+    deprecated_flags_buf[deprecated_flags_len] = long;
+    deprecated_flags_len += 1;
+}
+
 /// Copy the resolved path into the module-static buffer and return it as a
 /// `.help` result. Returning a slice into `parseImpl`'s stack-local
 /// `path_buf` would dangle once `parseImpl` returns to its caller.
@@ -473,6 +498,10 @@ fn parseLeaf(
     // Reset the shared list-flag accumulator for this parse.
     list_counts = .{0} ** max_list_flags;
 
+    // Reset the deprecated-flag record for this parse. The runner reads it
+    // after a successful parse to warn on used-but-deprecated flags.
+    deprecated_flags_len = 0;
+
     // Track which flags have been set so we can detect dupes and required
     // misses. Comptime-sized bitset (well, bool array) because the flag
     // count is comptime-known.
@@ -525,11 +554,20 @@ fn parseLeaf(
             if (all_flags.len > 0 and matched_idx != null) {
                 const idx = matched_idx.?;
                 const f = all_flags[idx];
-                if (!f.list and seen[idx]) {
+                if (!f.list and !f.count and seen[idx]) {
                     err_out.* = .{ .kind = err_mod.Parse.DuplicateFlag, .flag = f.long };
                     return err_mod.Parse.DuplicateFlag;
                 }
                 seen[idx] = true;
+                if (f.deprecated != null) recordDeprecatedFlag(f.long);
+
+                // Count flags take no value; each occurrence increments. They
+                // are declared `kind == .bool`, so this must precede the bool
+                // branch below.
+                if (f.count) {
+                    incrementCountFlag(Args, &args, all_flags, idx);
+                    continue;
+                }
 
                 if (f.kind == .bool) {
                     const value = if (matched.?.negated)
@@ -730,7 +768,7 @@ fn matchFlag(comptime all_flags: []const Flag, tok: []const u8) ?MatchedFlag {
     if (tok.len >= 2 and tok[0] == '-' and tok[1] == '-') {
         inline for (all_flags, 0..) |f, i| {
             if (flagLongMatches(f, tok)) return .{ .idx = i };
-            if (f.kind == .bool and flagNegationMatches(f, tok)) return .{ .idx = i, .negated = true };
+            if (f.kind == .bool and !f.count and flagNegationMatches(f, tok)) return .{ .idx = i, .negated = true };
             if (f.kind != .bool) {
                 if (std.mem.startsWith(u8, tok, f.long) and tok.len > f.long.len and tok[f.long.len] == '=') {
                     return .{ .idx = i, .inline_value = tok[f.long.len + 1 ..] };
@@ -785,6 +823,7 @@ fn parseShortExpansion(
             return err_mod.Parse.DuplicateFlag;
         }
         seen[first_idx] = true;
+        if (first_flag.deprecated != null) recordDeprecatedFlag(first_flag.long);
         try coerceAndStore(Args, args, all_flags, first_idx, first_flag, raw, err_out);
         return true;
     }
@@ -800,12 +839,18 @@ fn parseShortExpansion(
         const idx = matchShortFlag(all_flags, tok[pos]).?;
         const f = all_flags[idx];
         if (f.kind != .bool) return false;
-        if (seen[idx]) {
+        if (!f.count and seen[idx]) {
             err_out.* = .{ .kind = err_mod.Parse.DuplicateFlag, .flag = f.long };
             return err_mod.Parse.DuplicateFlag;
         }
         seen[idx] = true;
-        setFlagValue(Args, args, all_flags, idx, .{ .bool = true });
+        if (f.deprecated != null) recordDeprecatedFlag(f.long);
+        // A count flag in a bundle (`-vvv`) increments once per occurrence.
+        if (f.count) {
+            incrementCountFlag(Args, args, all_flags, idx);
+        } else {
+            setFlagValue(Args, args, all_flags, idx, .{ .bool = true });
+        }
     }
     return true;
 }
@@ -1070,9 +1115,10 @@ fn setFlagValue(
     // `inline for` unrolls into a switch on idx so each branch sees a
     // comptime field name AND a comptime-narrowed value type.
     inline for (all_flags, 0..) |f, i| {
-        // List flags store via appendListValue; skip them so this scalar
-        // assignment isn't type-checked against their slice field.
-        if (comptime !f.list) {
+        // List flags store via appendListValue and count flags via
+        // incrementCountFlag; skip both so this scalar assignment isn't
+        // type-checked against their slice / u32 fields.
+        if (comptime !f.list and !f.count) {
             if (i == idx) {
                 const field_name = comptime flag_mod.flagFieldName(f);
                 switch (f.kind) {
@@ -1084,6 +1130,26 @@ fn setFlagValue(
                     .path => @field(args, field_name) = runtime_val.path,
                     .choice => @field(args, field_name) = runtime_val.choice,
                 }
+                return;
+            }
+        }
+    }
+}
+
+/// Increment a count flag's `u32` field by one. Like `setFlagValue`, the spec
+/// slice is comptime-known but `idx` is runtime, so an `inline for` unrolls
+/// into a switch on idx to recover the comptime field name.
+fn incrementCountFlag(
+    comptime Args: type,
+    args: *Args,
+    comptime all_flags: []const Flag,
+    idx: usize,
+) void {
+    inline for (all_flags, 0..) |f, i| {
+        if (comptime f.count) {
+            if (i == idx) {
+                const field_name = comptime flag_mod.flagFieldName(f);
+                @field(args, field_name) +|= 1;
                 return;
             }
         }

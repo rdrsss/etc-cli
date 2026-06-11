@@ -8,13 +8,17 @@ tool \- Snapshot tool
 Snapshot tool
 .SH COMMANDS
 .TP
-.B run
+.B run, r
 Run target
 .SH OPTIONS
 .TP
 .B \-\-verbose, \-v
 type: bool, default: false
 Verbose output
+.TP
+.B \-\-debug, \-d
+type: count, repeatable
+Increase debug verbosity (repeatable)
 .TP
 .B \-\-color auto|always|never
 type: choice, value: auto|always|never, default: "auto"

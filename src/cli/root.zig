@@ -134,8 +134,14 @@ pub const run = app_mod.run;
 // `schema` namespaces expose their own nested `Options`.
 pub const RunOptions = app_mod.Options;
 pub const ExitCodes = app_mod.ExitCodes;
+pub const ColorMode = app_mod.ColorMode;
 pub const parse = parser.parse;
 pub const dispatch = parser.dispatch;
+/// Canonical long names of the deprecated flags matched by the most recent
+/// `parse`/`dispatch`/`run`. Valid until the next parser invocation. `cli.run`
+/// uses this to warn on deprecated-flag usage; low-level `parse` callers can
+/// read it to emit their own warnings.
+pub const deprecatedFlagsSeen = parser.deprecatedFlagsSeen;
 pub const formatError = err_mod.format;
 pub const structuredError = err_mod.structured;
 pub const errorKindName = err_mod.kindName;

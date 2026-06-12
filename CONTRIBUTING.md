@@ -1,6 +1,6 @@
-# Contributing to etc-cli
+# Contributing to etcli
 
-Thanks for your interest in improving `etc-cli`. This is a small, dependency-free
+Thanks for your interest in improving `etcli`. This is a small, dependency-free
 Zig package, so the contribution loop is intentionally simple.
 
 By participating, you agree to abide by the [Code of Conduct](CODE_OF_CONDUCT.md).
@@ -26,7 +26,7 @@ zig build test --summary all
 ```
 
 That step compiles the package and the example, runs source-local unit tests,
-the downstream-style import fixtures for both `cli` and `etc_cli`, the parser /
+the downstream-style import fixtures for both `cli` and `etcli`, the parser /
 dispatch / help / completion / man / schema / snapshot integration tests, the
 parser property tests, and the compile-fail validation fixtures, then runs the
 optional man-page and completion lints.

@@ -129,11 +129,11 @@ test "subcommand man page includes inherited and local flags" {
 test "options can set title and manual metadata" {
     const text = comptime cli.man.page(root, &.{ "group", "run" }, .{
         .title = "TOOL-RUN",
-        .source = "etc-cli 1.0",
+        .source = "etcli 1.0",
         .manual = "User Commands",
     });
 
-    try expectContains(text, ".TH \"TOOL-RUN\" \"1\" \"1970-01-01\" \"etc-cli 1.0\" \"User Commands\"");
+    try expectContains(text, ".TH \"TOOL-RUN\" \"1\" \"1970-01-01\" \"etcli 1.0\" \"User Commands\"");
 }
 
 test "man page can be written to a caller-owned writer" {

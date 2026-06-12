@@ -4,12 +4,12 @@ const cli = @import("cli");
 
 const root = cli.Cmd{
     .name = "example",
-    .desc = "Example etc-cli application",
+    .desc = "Example etcli application",
     .flags = &.{
         .{ .long = "--verbose", .short = 'v', .kind = .bool, .desc = "Enable verbose output", .default = .{ .bool = false } },
     },
     .doc = .{
-        .homepage = "https://github.com/rdrsss/etc-cli",
+        .homepage = "https://github.com/rdrsss/etcli",
         .license = "MIT",
         .version = "0.1.0",
     },
@@ -55,7 +55,7 @@ pub fn main(init: std.process.Init) !void {
         .stdout = &stdout_writer.interface,
         .stderr = &stderr_writer.interface,
         .version = "0.1.0",
-        .about = "Example application built with etc-cli.",
+        .about = "Example application built with etcli.",
         // Colorize help only when stdout is a real terminal. The writer hides
         // the fd, so we detect TTY state here and hand it to the runner; `.auto`
         // also honors NO_COLOR when an env_lookup is provided.

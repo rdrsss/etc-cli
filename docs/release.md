@@ -1,6 +1,6 @@
 # Release And API Policy
 
-`etc-cli` is a source package consumed by Zig projects. Releases should keep the
+`etcli` is a source package consumed by Zig projects. Releases should keep the
 public module contract predictable and make generated artifact changes explicit.
 
 ## Versioning

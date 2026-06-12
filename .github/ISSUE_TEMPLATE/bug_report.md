@@ -12,7 +12,7 @@ A clear, one-sentence description of the bug.
 
 ## Environment
 
-- `etc-cli` version / commit:
+- `etcli` version / commit:
 - Zig version (`zig version`):
 - OS:
 - Shell (if the issue involves generated completions): bash / zsh / fish

@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest a new capability or API for etc-cli
+about: Suggest a new capability or API for etcli
 title: ''
 labels: enhancement
 assignees: ''
@@ -8,7 +8,7 @@ assignees: ''
 
 ## Problem
 
-What are you trying to do that `etc-cli` does not support today? Deferred areas
+What are you trying to do that `etcli` does not support today? Deferred areas
 are documented in `README.md` (for example flag groups and the current limits of
 runner-owned env fallback) — note if your request is one of those.
 

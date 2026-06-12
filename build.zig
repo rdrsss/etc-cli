@@ -10,14 +10,14 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const etc_cli_mod = b.addModule("etc_cli", .{
+    const etcli_mod = b.addModule("etcli", .{
         .root_source_file = b.path("src/cli/root.zig"),
         .target = target,
         .optimize = optimize,
     });
 
     const basic_example = b.addExecutable(.{
-        .name = "etc-cli-basic-example",
+        .name = "etcli-basic-example",
         .root_module = b.createModule(.{
             .root_source_file = b.path("examples/basic.zig"),
             .target = target,
@@ -50,17 +50,17 @@ pub fn build(b: *std.Build) void {
     });
     const run_package_import_cli_tests = b.addRunArtifact(package_import_cli_tests);
 
-    const package_import_etc_cli_tests = b.addTest(.{
+    const package_import_etcli_tests = b.addTest(.{
         .root_module = b.createModule(.{
-            .root_source_file = b.path("integration_tests/package_import_etc_cli_test.zig"),
+            .root_source_file = b.path("integration_tests/package_import_etcli_test.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "etc_cli", .module = etc_cli_mod },
+                .{ .name = "etcli", .module = etcli_mod },
             },
         }),
     });
-    const run_package_import_etc_cli_tests = b.addRunArtifact(package_import_etc_cli_tests);
+    const run_package_import_etcli_tests = b.addRunArtifact(package_import_etcli_tests);
 
     const parser_contract_tests = b.addTest(.{
         .root_module = b.createModule(.{
@@ -257,7 +257,7 @@ pub fn build(b: *std.Build) void {
     // `zig build snapshots-update` regenerates the golden files under
     // integration_tests/snapshots/ from the shared snapshot_tree.zig.
     const snapshot_gen = b.addExecutable(.{
-        .name = "etc-cli-snapshot-gen",
+        .name = "etcli-snapshot-gen",
         .root_module = b.createModule(.{
             .root_source_file = b.path("integration_tests/snapshot_gen.zig"),
             .target = target,
@@ -276,7 +276,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(&basic_example.step);
     test_step.dependOn(&run_package_import_cli_tests.step);
-    test_step.dependOn(&run_package_import_etc_cli_tests.step);
+    test_step.dependOn(&run_package_import_etcli_tests.step);
     test_step.dependOn(&run_parser_contract_tests.step);
     test_step.dependOn(&run_parser_edge_tests.step);
     test_step.dependOn(&run_dispatch_contract_tests.step);

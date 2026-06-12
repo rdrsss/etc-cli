@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-`etc-cli` is pre-1.0. Security fixes are applied to the latest released tag on
+`etcli` is pre-1.0. Security fixes are applied to the latest released tag on
 the `master` branch.
 
 ## Reporting a vulnerability
@@ -10,7 +10,7 @@ the `master` branch.
 Please report security-sensitive issues privately rather than opening a public
 issue:
 
-- Preferred: open a [GitHub security advisory](https://github.com/rdrsss/etc-cli/security/advisories/new)
+- Preferred: open a [GitHub security advisory](https://github.com/rdrsss/etcli/security/advisories/new)
   for this repository.
 - Alternatively, email **manuel.rdrs@gmail.com** with details and, if possible,
   a minimal reproduction.
@@ -21,7 +21,7 @@ prefer to remain anonymous.
 
 ## Scope notes
 
-`etc-cli` is a parsing and code-generation library with no network or
+`etcli` is a parsing and code-generation library with no network or
 filesystem access of its own. The relevant attack surface is:
 
 - **Runtime argv parsing** — untrusted command-line input handled by `parse`,
@@ -33,4 +33,4 @@ filesystem access of its own. The relevant attack surface is:
 
 Command trees are author-supplied compile-time constants, so issues stemming
 from a project's own tree definition are configuration concerns, not
-vulnerabilities in `etc-cli`.
+vulnerabilities in `etcli`.

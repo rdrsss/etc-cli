@@ -1,6 +1,6 @@
-# etc-cli
+# etcli
 
-`etc-cli` is a standalone Zig package providing a comptime-driven CLI parser.
+`etcli` is a standalone Zig package providing a comptime-driven CLI parser.
 It gives tools typed command trees, generated help, shell completion scripts,
 man pages, and machine-readable command schemas, with no dependencies beyond
 Zig `std`.
@@ -12,12 +12,12 @@ Requires Zig `0.16.x`.
 Fetch the package into your project's `build.zig.zon` (pin to a released tag):
 
 ```sh
-zig fetch --save "git+https://github.com/rdrsss/etc-cli#v0.1.1"
+zig fetch --save "git+https://github.com/rdrsss/etcli#v0.2.0"
 ```
 
-That records the dependency under the name `etc_cli`. Then import it under
+That records the dependency under the name `etcli`. Then import it under
 whatever local name you prefer — the package exposes the same root under both
-`cli` (the canonical short name used throughout these docs) and `etc_cli`:
+`cli` (the canonical short name used throughout these docs) and `etcli`:
 
 ```zig
 const cli = @import("cli");
@@ -27,12 +27,12 @@ In the consuming project's `build.zig`, wire the dependency module into an
 executable or library:
 
 ```zig
-const etc_cli_dep = b.dependency("etc_cli", .{
+const etcli_dep = b.dependency("etcli", .{
     .target = target,
     .optimize = optimize,
 });
 
-exe.root_module.addImport("cli", etc_cli_dep.module("cli"));
+exe.root_module.addImport("cli", etcli_dep.module("cli"));
 ```
 
 ## Example
@@ -347,7 +347,7 @@ const gen_docs = b.addExecutable(.{
     .target = target,
     .optimize = optimize,
 });
-gen_docs.root_module.addImport("cli", etc_cli_dep.module("cli"));
+gen_docs.root_module.addImport("cli", etcli_dep.module("cli"));
 
 const run_gen_docs = b.addRunArtifact(gen_docs);
 run_gen_docs.addArg("zig-out/package-root");
@@ -390,7 +390,7 @@ try stageArtifact(
 ```
 
 One possible staging helper can consume all public artifact fields while keeping
-install policy outside `etc-cli`:
+install policy outside `etcli`:
 
 ```zig
 fn stageArtifact(
@@ -427,7 +427,7 @@ fn stageArtifact(
 
 Artifact naming is deterministic: man pages use `tool.1` and
 `tool-subcommand.1`, completions use `tool.bash`, `_tool`, and `tool.fish`, and
-schema output uses `tool.schema.json`. `etc-cli` intentionally returns plain
+schema output uses `tool.schema.json`. `etcli` intentionally returns plain
 text and never installs, compresses, or writes artifacts on its own. The
 `destination_hint` values are conventional defaults such as `share/man/man1`,
 bash-completion, zsh functions, fish vendor completions, and schema collection
@@ -490,7 +490,7 @@ zig build test
 ```
 
 That command runs source-local unit tests, downstream-style import tests for both
-`cli` and `etc_cli`, parser contract tests, dispatch tests, completion/help
+`cli` and `etcli`, parser contract tests, dispatch tests, completion/help
 tests, man-page generation tests, schema generation tests, and compile-fail
 validation fixtures. Snapshot contract tests pin representative help, man,
 completion, and schema output. Artifact contract tests inspect generated names,
@@ -518,5 +518,5 @@ reporting security-sensitive issues.
 
 ## License
 
-`etc-cli` is released under the [MIT License](LICENSE). Copyright (c) 2026
+`etcli` is released under the [MIT License](LICENSE). Copyright (c) 2026
 Manuel A. Rodriguez.

@@ -1,6 +1,6 @@
 # CI Matrix
 
-`etc-cli` should be tested anywhere downstream projects are expected to build
+`etcli` should be tested anywhere downstream projects are expected to build
 their CLIs.
 
 Recommended matrix:

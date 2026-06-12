@@ -1,10 +1,12 @@
 # Changelog
 
-All notable changes to `etc-cli` are recorded here. The format is based on
+All notable changes to `etcli` are recorded here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-06-12
 
 ### Added
 
@@ -59,6 +61,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **BREAKING:** The package is renamed from `etc-cli` to `etcli`. The
+  `build.zig.zon` package name is now `.etcli` and the dependency module is
+  exposed as `etcli` (the canonical `cli` module name is unchanged). Downstream
+  consumers must update `zig fetch`/`b.dependency` to `etcli` and re-pin to
+  `v0.2.0`; the old `etc_cli` import name no longer resolves.
 - The completion lint gate now fails when a supported shell has no committed
   completion snapshots, and syntax-checks bash, zsh, and fish snapshots when the
   corresponding shell is installed.
@@ -144,6 +151,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Validation and generator diagnostics are name-agnostic (no `cli.` prefix) so
   `etc_cli` importers see matching messages.
 
-[Unreleased]: https://github.com/rdrsss/etc-cli/compare/v0.1.1...HEAD
-[0.1.1]: https://github.com/rdrsss/etc-cli/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/rdrsss/etc-cli/releases/tag/v0.1.0
+[Unreleased]: https://github.com/rdrsss/etcli/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/rdrsss/etcli/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/rdrsss/etcli/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/rdrsss/etcli/releases/tag/v0.1.0
